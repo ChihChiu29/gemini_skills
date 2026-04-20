@@ -40,8 +40,8 @@ def fetch_data(symbol, period="3y"):
             "symbol": symbol.upper(),
             "last_price": float(hist['Close'].iloc[-1]),
             "history": [
-                {"date": str(d.date()), "close": float(c)} 
-                for d, c in zip(hist.index, hist['Close'])
+                {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 
+                for d, c, h, l in zip(hist.index, hist['Close'], hist['High'], hist['Low'])
             ],
             "updated_at": str(datetime.datetime.now())
         }
@@ -65,10 +65,25 @@ def calculate_lows(data):
         proximity = (current_price / low - 1) * 100
         return low, proximity
 
+    def get_volatility(days):
+        cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+        relevant = [h for h in history if h['date'] >= cutoff]
+        if not relevant: return 0
+        # Use high/low if available, fallback to close for old cache
+        highs = [h.get('high', h['close']) for h in relevant]
+        lows = [h.get('low', h['close']) for h in relevant]
+        v_high = max(highs)
+        v_low = min(lows)
+        if v_low == 0: return 0
+        return (v_high / v_low - 1) * 100
+
     low_3y, prox_3y = get_low_info(3 * 365)
     low_6m, prox_6m = get_low_info(180)
     low_3m, prox_3m = get_low_info(90)
     low_7d, prox_7d = get_low_info(7)
+
+    vol_7d = get_volatility(7)
+    vol_30d = get_volatility(30)
 
     # Trend Analysis
     daily_change = 0
@@ -87,6 +102,8 @@ def calculate_lows(data):
         "low_6m": low_6m, "prox_6m": prox_6m,
         "low_3m": low_3m, "prox_3m": prox_3m,
         "low_7d": low_7d, "prox_7d": prox_7d,
+        "vol_7d": vol_7d,
+        "vol_30d": vol_30d,
         "daily_change": daily_change,
         "avg_7d_change": avg_7d_change
     }
@@ -103,14 +120,14 @@ def generate_html_report(results, output_path=None):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Stock Trend & Lows Analysis</title>
+        <title>Stock Volatility & Lows Analysis</title>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1400px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
             h1, h2 { color: #2c3e50; }
             .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.9em; }
-            th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #ddd; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.85em; }
+            th, td { padding: 10px 10px; text-align: left; border-bottom: 1px solid #ddd; }
             th { background-color: #34495e; color: white; }
             tr:hover { background-color: #f1f1f1; }
             .orange-row { background-color: #fffaf0 !important; border-left: 5px solid #f39c12; }
@@ -118,12 +135,13 @@ def generate_html_report(results, output_path=None):
             .trend-down { color: #e74c3c; font-weight: bold; }
             .trend-up { color: #27ae60; }
             .near-low { font-weight: bold; color: #d35400; }
+            .high-vol { font-weight: bold; color: #8e44ad; }
             .chart-container { height: 400px; width: 100%; }
             .summary-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; margin-right: 5px; background: #ecf0f1; }
         </style>
     </head>
     <body>
-        <h1>Stock Analysis: Low Proximity & Trends</h1>
+        <h1>Stock Analysis: Lows, Trends & Volatility</h1>
         <p>Generated on: {timestamp}</p>
         
         <div class="stock-card">
@@ -139,6 +157,8 @@ def generate_html_report(results, output_path=None):
                         <th>Near 7D</th>
                         <th>Daily %</th>
                         <th>7D Avg %</th>
+                        <th>Vol 7D</th>
+                        <th>Vol 30D</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -166,6 +186,9 @@ def generate_html_report(results, output_path=None):
         data = item['data']
         lows = item['lows']
         
+        # High Volatility Thresholds
+        is_high_vol = lows['vol_7d'] > 7.0 or lows['vol_30d'] > 15.0
+        
         # Determine highlighting
         is_near_low = any([
             lows['prox_3y'] is not None and lows['prox_3y'] < 15,
@@ -176,7 +199,7 @@ def generate_html_report(results, output_path=None):
         is_dropping = lows['daily_change'] < 0 or lows['avg_7d_change'] < 0
         
         row_cls = ""
-        if is_near_low:
+        if is_near_low or is_high_vol:
             row_cls = "red-row" if is_dropping else "orange-row"
             
         def fmt_prox(val):
@@ -184,13 +207,22 @@ def generate_html_report(results, output_path=None):
             cls = "near-low" if val < 15 else ""
             return f'<span class="{cls}">{val:.2f}%</span>'
 
+        def fmt_vol(val, thresh):
+            cls = "high-vol" if val > thresh else ""
+            return f'<span class="{cls}">{val:.2f}%</span>'
+
         def fmt_trend(val):
             cls = "trend-down" if val < 0 else "trend-up"
             return f'<span class="{cls}">{val:+.2f}%</span>'
 
-        status = "Stable"
-        if is_near_low and is_dropping: status = "<b>CRITICAL (Dropping at Low)</b>"
-        elif is_near_low: status = "Near Support"
+        status_parts = []
+        if is_near_low: status_parts.append("Near Support")
+        if is_high_vol: status_parts.append("High Volatility")
+        if is_dropping: status_parts.append("Dropping")
+        
+        status = ", ".join(status_parts) if status_parts else "Stable"
+        if (is_near_low or is_high_vol) and is_dropping:
+            status = f"<b>CRITICAL ({status})</b>"
 
         table_rows += f"""
         <tr class="{row_cls}">
@@ -202,6 +234,8 @@ def generate_html_report(results, output_path=None):
             <td>{fmt_prox(lows['prox_7d'])}</td>
             <td>{fmt_trend(lows['daily_change'])}</td>
             <td>{fmt_trend(lows['avg_7d_change'])}</td>
+            <td>{fmt_vol(lows['vol_7d'], 7.0)}</td>
+            <td>{fmt_vol(lows['vol_30d'], 15.0)}</td>
             <td>{status}</td>
         </tr>
         """

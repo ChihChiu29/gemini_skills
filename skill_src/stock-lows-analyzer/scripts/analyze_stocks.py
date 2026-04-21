@@ -227,7 +227,7 @@ def generate_html_report(results, output_path=None):
             if stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0:
                  reasons.append('<span class="buy-text">BUY (Short Term)</span>: 7D Low + Volatility')
 
-            row_html = f"<tr><td>{sym}</td><td>${stats['current']:.2f}</td>"
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>"
             
             for period in ["3y", "6m", "3m", "7d"]:
                 p = stats[period]
@@ -238,7 +238,7 @@ def generate_html_report(results, output_path=None):
                     pos_cls = ""
                     if p['pos_pct'] < low_th:
                         pos_cls = "red-cell"
-                        if not any("BUY" in r for r in reasons): # Fallback for individual triggers
+                        if not any("BUY" in r for r in reasons):
                              reasons.append(f'<span class="buy-text">BUY</span>: {period.upper()} Pos% ({p["pos_pct"]:.1f}%) < {low_th}%')
                     elif p['pos_pct'] > high_th:
                         pos_cls = "green-cell"
@@ -258,7 +258,6 @@ def generate_html_report(results, output_path=None):
                 else:
                     row_html += "<td>-</td><td>-</td><td>-</td><td>-</td>"
             
-            # Clean up duplicate simple BUY reasons if LT/ST logic already covered them
             unique_reasons = []
             seen_lt_st = any("BUY (" in r for r in reasons)
             for r in reasons:
@@ -279,6 +278,7 @@ def generate_html_report(results, output_path=None):
     content += render_table(other_group, "OTHER STOCKS", "")
 
     charts_js = ""
+    stock_details_html = ""
     seen_symbols = set()
     for group in [buy_group, sell_group, watch_group, other_group]:
         for item in group:
@@ -287,11 +287,18 @@ def generate_html_report(results, output_path=None):
             seen_symbols.add(sym)
             
             data = item['data']
+            stock_details_html += f"""
+            <div id="chart-{sym}" class="stock-card">
+                <h2>{sym} - Price History <a href="#" style="font-size: 0.5em; vertical-align: middle;">[Top]</a></h2>
+                <div id="plot-{sym}" class="chart-container"></div>
+            </div>
+            """
+            
             dates = [h['date'] for h in data['history']]
             prices = [h['close'] for h in data['history']]
             
             charts_js += f"""
-            Plotly.newPlot('chart-{sym}', [{{
+            Plotly.newPlot('plot-{sym}', [{{
                 x: {json.dumps(dates)},
                 y: {json.dumps(prices)},
                 type: 'scatter',
@@ -307,7 +314,7 @@ def generate_html_report(results, output_path=None):
             """
 
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")) \
-                             .replace("{content}", content) \
+                             .replace("{content}", content + stock_details_html) \
                              .replace("{charts_js}", charts_js)
     
     with open(output_path, 'w', encoding='utf-8') as f:

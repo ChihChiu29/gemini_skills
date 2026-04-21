@@ -3,38 +3,46 @@ name: stock-lows-analyzer
 description: Analyzes major U.S. stocks to find those trading near historical lows (3m, 6m, 3y). Generates an interactive HTML report with price charts and a summary table highlighting buying opportunities.
 ---
 
-# Stock Volatility & Lows Analyzer
+# Stock Multi-Period Grid & Grouped Watchlist Analyzer
 
-This skill provides a deep analysis of stocks relative to historical lows, recent price trends, and market volatility.
+This skill provides a comprehensive grid analysis of stocks across four key time periods (3Y, 6M, 3M, 7D) with tiered recommendations.
 
 ## Workflow
 
-1.  **Identify Symbols**: Use `references/tech_stocks.md` for major tech tickers or ask the user for a list.
+1.  **Identify Symbols**: By default, the script reads all symbols from `references/tech_stocks.md`. You can also provide a specific list as arguments.
 2.  **Environment Check**: Verify `yfinance` is installed (`pip install yfinance`).
-3.  **Run Analysis**: Execute `scripts/analyze_stocks.py` with the chosen symbols.
-4.  **Open Report**: The script generates a timestamped report in the `OUTPUT/` directory (e.g., `OUTPUT/stock_report_20260417_235959.html`).
+3.  **Run Analysis**: Execute `scripts/analyze_stocks.py`.
+4.  **Open Report**: The script generates a timestamped report in the `OUTPUT/` directory.
 
 ## Using the Script
 
-Run the script with stock symbols:
+Run the script to analyze all default symbols:
 
 ```bash
-python scripts/analyze_stocks.py TSLA NVDA AMZN GOOGL
+python scripts/analyze_stocks.py
+```
+
+Or analyze specific symbols:
+
+```bash
+python scripts/analyze_stocks.py TSLA NVDA AMZN
 ```
 
 ### Analysis Features
-- **Historical Proximity (4 Columns)**: Proximity to 3-year, 6-month, 3-month, and 7-day lows.
-- **Trend Analysis (2 Columns)**: Daily price change (%) and 7-day average daily change (%).
-- **Volatility Analysis (2 Columns)**: High-Low price spread for the last 7 days and 30 days (%).
-- **Highlighting Logic**:
-    - **Orange**: Stock is within 15% of a historical low OR shows high volatility (>7% in 7D or >15% in 30D).
-    - **Red**: Stock meets the "Orange" criteria AND is currently dropping (negative daily or 7D average trend).
-- **Caching**: Historical data (Close, High, Low) is cached in `CACHE/stock_cache/` for 24 hours.
+- **Automatic Symbol Fetching**: If no symbols are provided, it automatically reads the curated list from `references/tech_stocks.md`.
+- **Categorized BUY Targets**:
+    - **Long Term BUY**: Triggered if at least 2 long-term periods (3Y, 6M, 3M) are near their lows (<15% for 3Y/6M, <20% for 3M).
+    - **Short Term BUY**: Triggered if 7D Pos% is low (<25%) AND 7D Volatility is significant (>=10%).
+- **Categorized SELL Targets**: Triggered if price is near multi-period highs (>95% for 3Y/6M/3M, >80% for 7D).
+- **Categorized WATCHLIST**: Triggered by high volatility (3M > 50% or 7D > 20%).
+- **Grouped Results**: Stocks are categorized into **BUY TARGETS**, **SELL TARGETS**, **WATCHLIST**, and **OTHER STOCKS**.
+- **Alphabetical Sorting**: Each category is sorted alphabetically.
+- **Precision Highlighting**: Red (BUY signal), Green (SELL signal), and Orange (WATCH signal) cell backgrounds.
+- **Caching**: Historical data (Close, High, Low) is cached for 24 hours.
 
 ## Output
 - **Organized Storage**: All reports are stored in the `OUTPUT/` directory.
-- **Dynamic Filenames**: Reports are named `stock_report_<YYYYMMDD>_<HHMMSS>.html`.
-- **Status Indicators**: Explicit labels for "Near Support", "High Volatility", and "CRITICAL" states.
+- **Grouped Interface**: Interactive reports feature categorized tables followed by price charts.
 
 ## Reference Material
 - [references/tech_stocks.md](references/tech_stocks.md): Curated list of major U.S. tech and growth stocks.

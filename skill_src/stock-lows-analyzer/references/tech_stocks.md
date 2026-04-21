@@ -11,35 +11,65 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - META (Meta)
 - TSLA (Tesla)
 
-## Semiconductors
+## Semiconductors & Hardware
 - AMD (Advanced Micro Devices)
-- INTC (Intel)
-- TSM (Taiwan Semiconductor)
 - AVGO (Broadcom)
 - ASML (ASML Holding)
+- INTC (Intel)
 - MU (Micron Technology)
+- NVDA (Nvidia)
+- QCOM (Qualcomm)
+- TSM (Taiwan Semiconductor)
+- ARM (Arm Holdings)
 - ADI (Analog Devices)
+- AMAT (Applied Materials)
+- LRCX (Lam Research)
 
-## Software & Cloud
+## Software, Cloud & AI
+- ADBE (Adobe)
 - CRM (Salesforce)
-- ADOBE (Adobe)
 - ORCL (Oracle)
 - NOW (ServiceNow)
 - PANW (Palo Alto Networks)
 - SNOW (Snowflake)
-- WD (Workday)
+- WDAY (Workday)
+- PLTR (Palantir)
+- MSFT (Microsoft)
+- CRWD (CrowdStrike)
+- NET (Cloudflare)
+- DDOG (Datadog)
+- MDB (MongoDB)
+- ZS (Zscaler)
 
-## Internet & E-commerce
-- NFLX (Netflix)
-- PYPL (PayPal)
+## Internet, E-commerce & Social Media
+- AMZN (Amazon)
 - BABA (Alibaba)
 - SHOP (Shopify)
+- NFLX (Netflix)
 - UBER (Uber)
 - ABNB (Airbnb)
+- DASH (DoorDash)
+- MELI (MercadoLibre)
+- PDD (Pinduoduo)
+- GOOGL (Alphabet)
+- META (Meta)
 
-## Fintech & Others
+## Fintech & Payments
 - V (Visa)
 - MA (Mastercard)
+- PYPL (PayPal)
 - SQ (Block)
 - COIN (Coinbase)
+- SOFI (SoFi Technologies)
+- HOOD (Robinhood)
+
+## Major Industrial & Consumer Giants
+- BA (Boeing)
+- CAT (Caterpillar)
 - DIS (Disney)
+- NKE (Nike)
+- SBUX (Starbucks)
+- COST (Costco)
+- WMT (Walmart)
+- LLY (Eli Lilly)
+- UNH (UnitedHealth)

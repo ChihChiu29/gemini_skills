@@ -57,55 +57,34 @@ def calculate_lows(data):
     history = data['history']
     current_price = data['last_price']
     
-    def get_low_info(days):
-        cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-        prices = [h['close'] for h in history if h['date'] >= cutoff]
-        if not prices: return None, None
-        low = min(prices)
-        proximity = (current_price / low - 1) * 100
-        return low, proximity
-
-    def get_volatility(days):
+    def get_period_stats(days):
         cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
         relevant = [h for h in history if h['date'] >= cutoff]
-        if not relevant: return 0
-        # Use high/low if available, fallback to close for old cache
+        if not relevant: return None
+        
         highs = [h.get('high', h['close']) for h in relevant]
         lows = [h.get('low', h['close']) for h in relevant]
-        v_high = max(highs)
-        v_low = min(lows)
-        if v_low == 0: return 0
-        return (v_high / v_low - 1) * 100
-
-    low_3y, prox_3y = get_low_info(3 * 365)
-    low_6m, prox_6m = get_low_info(180)
-    low_3m, prox_3m = get_low_info(90)
-    low_7d, prox_7d = get_low_info(7)
-
-    vol_7d = get_volatility(7)
-    vol_30d = get_volatility(30)
-
-    # Trend Analysis
-    daily_change = 0
-    avg_7d_change = 0
-    if len(history) >= 8:
-        last_closes = [h['close'] for h in history[-8:]]
-        daily_change = (last_closes[-1] / last_closes[-2] - 1) * 100
+        p_high = max(highs)
+        p_low = min(lows)
         
-        # Calculate daily % changes for last 7 sessions
-        changes = [(last_closes[i] / last_closes[i-1] - 1) * 100 for i in range(1, 8)]
-        avg_7d_change = sum(changes) / len(changes)
+        vol = (p_high / p_low - 1) * 100 if p_low > 0 else 0
+        pos_pct = (current_price - p_low) / (p_high - p_low) * 100 if p_high > p_low else 0
+        
+        return {
+            "high": p_high,
+            "low": p_low,
+            "vol": vol,
+            "pos_pct": pos_pct
+        }
 
     return {
+        "symbol": data["symbol"],
+        "data": data,
         "current": current_price,
-        "low_3y": low_3y, "prox_3y": prox_3y,
-        "low_6m": low_6m, "prox_6m": prox_6m,
-        "low_3m": low_3m, "prox_3m": prox_3m,
-        "low_7d": low_7d, "prox_7d": prox_7d,
-        "vol_7d": vol_7d,
-        "vol_30d": vol_30d,
-        "daily_change": daily_change,
-        "avg_7d_change": avg_7d_change
+        "3y": get_period_stats(3 * 365),
+        "6m": get_period_stats(180),
+        "3m": get_period_stats(90),
+        "7d": get_period_stats(7)
     }
 
 def generate_html_report(results, output_path=None):
@@ -116,59 +95,87 @@ def generate_html_report(results, output_path=None):
     else:
         output_path = Path(output_path)
 
+    # Thresholds & Rules
+    thresholds = {
+        "3y": {"low": 15, "high": 95},
+        "6m": {"low": 15, "high": 95},
+        "3m": {"low": 20, "high": 95},
+        "7d": {"low": 25, "high": 80}
+    }
+
+    buy_group = []
+    sell_group = []
+    watch_group = []
+    other_group = []
+
+    for item in results:
+        stats = item
+        
+        # BUY Criteria (NEW RULES)
+        lt_hits = 0
+        if stats['3y'] and stats['3y']['pos_pct'] < thresholds['3y']['low']: lt_hits += 1
+        if stats['6m'] and stats['6m']['pos_pct'] < thresholds['6m']['low']: lt_hits += 1
+        if stats['3m'] and stats['3m']['pos_pct'] < thresholds['3m']['low']: lt_hits += 1
+        is_lt_buy = lt_hits >= 2
+        
+        is_st_buy = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
+        
+        is_buy = is_lt_buy or is_st_buy
+        
+        # SELL/WATCH Criteria
+        is_sell = False
+        is_watch = False
+        for period in ["3y", "6m", "3m", "7d"]:
+            p = stats[period]
+            if p:
+                if p['pos_pct'] > thresholds[period]["high"]: is_sell = True
+                if (period == "3m" and p['vol'] > 50) or (period == "7d" and p['vol'] > 20): is_watch = True
+
+        if is_buy: buy_group.append(item)
+        if is_sell: sell_group.append(item)
+        if is_watch: watch_group.append(item)
+        if not (is_buy or is_sell or is_watch): other_group.append(item)
+
+    # Sort each group alphabetically
+    buy_group.sort(key=lambda x: x['symbol'])
+    sell_group.sort(key=lambda x: x['symbol'])
+    watch_group.sort(key=lambda x: x['symbol'])
+    other_group.sort(key=lambda x: x['symbol'])
+
     html_template = """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Stock Volatility & Lows Analysis</title>
+        <title>Stock Multi-Period Analysis</title>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1400px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1700px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
             h1, h2 { color: #2c3e50; }
-            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.85em; }
-            th, td { padding: 10px 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background-color: #34495e; color: white; }
-            tr:hover { background-color: #f1f1f1; }
-            .orange-row { background-color: #fffaf0 !important; border-left: 5px solid #f39c12; }
-            .red-row { background-color: #fff5f5 !important; border-left: 5px solid #e74c3c; }
-            .trend-down { color: #e74c3c; font-weight: bold; }
-            .trend-up { color: #27ae60; }
-            .near-low { font-weight: bold; color: #d35400; }
-            .high-vol { font-weight: bold; color: #8e44ad; }
+            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 20px; overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.8em; }
+            th, td { padding: 8px 10px; text-align: right; border: 1px solid #eee; }
+            th { background-color: #34495e; color: white; text-align: center; }
+            td:first-child, th:first-child { text-align: left; font-weight: bold; background-color: #f9f9f9; }
+            .red-cell { background-color: #ffcccc; color: #cc0000; font-weight: bold; }
+            .green-cell { background-color: #ccffcc; color: #006600; font-weight: bold; }
+            .orange-cell { background-color: #ffe5cc; color: #e67e22; font-weight: bold; }
+            .watch-reason { font-size: 0.85em; list-style-type: none; padding: 0; margin: 0; }
+            .watch-reason li { margin-bottom: 2px; }
+            .group-header { background-color: #2c3e50; color: white; padding: 10px; margin-top: 40px; border-radius: 8px 8px 0 0; }
+            .buy-header { background-color: #e74c3c; }
+            .sell-header { background-color: #27ae60; }
+            .watch-header { background-color: #e67e22; }
             .chart-container { height: 400px; width: 100%; }
-            .summary-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; margin-right: 5px; background: #ecf0f1; }
+            .buy-text { color: #cc0000; font-weight: bold; }
+            .sell-text { color: #006600; font-weight: bold; }
+            .watch-text { color: #e67e22; font-weight: bold; }
         </style>
     </head>
     <body>
-        <h1>Stock Analysis: Lows, Trends & Volatility</h1>
+        <h1>Stock Analysis: Grouped Watchlist</h1>
         <p>Generated on: {timestamp}</p>
         
-        <div class="stock-card">
-            <h2>Summary Table</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Symbol</th>
-                        <th>Price</th>
-                        <th>Near 3Y</th>
-                        <th>Near 6M</th>
-                        <th>Near 3M</th>
-                        <th>Near 7D</th>
-                        <th>Daily %</th>
-                        <th>7D Avg %</th>
-                        <th>Vol 7D</th>
-                        <th>Vol 30D</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {table_rows}
-                </tbody>
-            </table>
-        </div>
-
-        {stock_details}
+        {content}
 
         <script>
             {charts_js}
@@ -176,104 +183,131 @@ def generate_html_report(results, output_path=None):
     </body>
     </html>
     """
-    
-    table_rows = ""
-    stock_details = ""
-    charts_js = ""
-    
-    for idx, item in enumerate(results):
-        sym = item['symbol']
-        data = item['data']
-        lows = item['lows']
-        
-        # High Volatility Thresholds
-        is_high_vol = lows['vol_7d'] > 7.0 or lows['vol_30d'] > 15.0
-        
-        # Determine highlighting
-        is_near_low = any([
-            lows['prox_3y'] is not None and lows['prox_3y'] < 15,
-            lows['prox_6m'] is not None and lows['prox_6m'] < 15,
-            lows['prox_3m'] is not None and lows['prox_3m'] < 15
-        ])
-        
-        is_dropping = lows['daily_change'] < 0 or lows['avg_7d_change'] < 0
-        
-        row_cls = ""
-        if is_near_low or is_high_vol:
-            row_cls = "red-row" if is_dropping else "orange-row"
-            
-        def fmt_prox(val):
-            if val is None: return "N/A"
-            cls = "near-low" if val < 15 else ""
-            return f'<span class="{cls}">{val:.2f}%</span>'
 
-        def fmt_vol(val, thresh):
-            cls = "high-vol" if val > thresh else ""
-            return f'<span class="{cls}">{val:.2f}%</span>'
-
-        def fmt_trend(val):
-            cls = "trend-down" if val < 0 else "trend-up"
-            return f'<span class="{cls}">{val:+.2f}%</span>'
-
-        status_parts = []
-        if is_near_low: status_parts.append("Near Support")
-        if is_high_vol: status_parts.append("High Volatility")
-        if is_dropping: status_parts.append("Dropping")
+    def render_table(group_results, group_name, header_class):
+        if not group_results: return ""
         
-        status = ", ".join(status_parts) if status_parts else "Stable"
-        if (is_near_low or is_high_vol) and is_dropping:
-            status = f"<b>CRITICAL ({status})</b>"
-
-        table_rows += f"""
-        <tr class="{row_cls}">
-            <td><strong>{sym}</strong></td>
-            <td>${lows['current']:.2f}</td>
-            <td>{fmt_prox(lows['prox_3y'])}</td>
-            <td>{fmt_prox(lows['prox_6m'])}</td>
-            <td>{fmt_prox(lows['prox_3m'])}</td>
-            <td>{fmt_prox(lows['prox_7d'])}</td>
-            <td>{fmt_trend(lows['daily_change'])}</td>
-            <td>{fmt_trend(lows['avg_7d_change'])}</td>
-            <td>{fmt_vol(lows['vol_7d'], 7.0)}</td>
-            <td>{fmt_vol(lows['vol_30d'], 15.0)}</td>
-            <td>{status}</td>
-        </tr>
-        """
-        
-        stock_details += f"""
+        table_html = f'<div class="group-header {header_class}"><h2>{group_name}</h2></div>'
+        table_html += """
         <div class="stock-card">
-            <h2>{sym} - Price History & Analysis</h2>
-            <div id="chart-{sym}" class="chart-container"></div>
-            <p>
-                <strong>Current:</strong> ${lows['current']:.2f} | 
-                <strong>3Y Low:</strong> ${lows['low_3y']:.2f} ({fmt_prox(lows['prox_3y'])} above) | 
-                <strong>6M Low:</strong> ${lows['low_6m']:.2f} ({fmt_prox(lows['prox_6m'])} above)
-            </p>
-        </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th rowspan="2">Symbol</th>
+                        <th rowspan="2">Price</th>
+                        <th colspan="4">3 Year Period</th>
+                        <th colspan="4">6 Month Period</th>
+                        <th colspan="4">3 Month Period</th>
+                        <th colspan="4">7 Day Period</th>
+                        <th rowspan="2">Watch Reasons</th>
+                    </tr>
+                    <tr>
+                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
+                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
+                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
+                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
+                    </tr>
+                </thead>
+                <tbody>
         """
         
-        dates = [h['date'] for h in data['history']]
-        prices = [h['close'] for h in data['history']]
-        
-        charts_js += f"""
-        Plotly.newPlot('chart-{sym}', [{{
-            x: {json.dumps(dates)},
-            y: {json.dumps(prices)},
-            type: 'scatter',
-            mode: 'lines',
-            name: '{sym}',
-            line: {{color: '#3498db'}}
-        }}], {{
-            title: '{sym} Price History (3 Years)',
-            xaxis: {{ title: 'Date' }},
-            yaxis: {{ title: 'Price (USD)' }},
-            margin: {{ t: 40, b: 40, l: 60, r: 20 }}
-        }});
-        """
+        for item in group_results:
+            sym = item['symbol']
+            stats = item
+            reasons = []
+            
+            # Recalculate group-specific reason flags
+            lt_hits = 0
+            if stats['3y'] and stats['3y']['pos_pct'] < thresholds['3y']['low']: lt_hits += 1
+            if stats['6m'] and stats['6m']['pos_pct'] < thresholds['6m']['low']: lt_hits += 1
+            if stats['3m'] and stats['3m']['pos_pct'] < thresholds['3m']['low']: lt_hits += 1
+            if lt_hits >= 2:
+                reasons.append('<span class="buy-text">BUY (Long Term)</span>: Multi-period low (3Y/6M/3M)')
+            
+            if stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0:
+                 reasons.append('<span class="buy-text">BUY (Short Term)</span>: 7D Low + Volatility')
+
+            row_html = f"<tr><td>{sym}</td><td>${stats['current']:.2f}</td>"
+            
+            for period in ["3y", "6m", "3m", "7d"]:
+                p = stats[period]
+                if p:
+                    low_th = thresholds[period]["low"]
+                    high_th = thresholds[period]["high"]
+                    
+                    pos_cls = ""
+                    if p['pos_pct'] < low_th:
+                        pos_cls = "red-cell"
+                        if not any("BUY" in r for r in reasons): # Fallback for individual triggers
+                             reasons.append(f'<span class="buy-text">BUY</span>: {period.upper()} Pos% ({p["pos_pct"]:.1f}%) < {low_th}%')
+                    elif p['pos_pct'] > high_th:
+                        pos_cls = "green-cell"
+                        reasons.append(f'<span class="sell-text">SELL</span>: {period.upper()} Pos% ({p["pos_pct"]:.1f}%) > {high_th}%')
+                    
+                    vol_cls = ""
+                    if (period == "3m" and p['vol'] > 50) or (period == "7d" and p['vol'] > 20):
+                        vol_cls = "orange-cell"
+                        reasons.append(f'<span class="watch-text">WATCH</span>: {period.upper()} Vol ({p["vol"]:.1f}%) high')
+                    
+                    row_html += f"""
+                    <td>${p['high']:.2f}</td>
+                    <td>${p['low']:.2f}</td>
+                    <td class="{vol_cls}">{p['vol']:.1f}%</td>
+                    <td class="{pos_cls}">{p['pos_pct']:.1f}%</td>
+                    """
+                else:
+                    row_html += "<td>-</td><td>-</td><td>-</td><td>-</td>"
+            
+            # Clean up duplicate simple BUY reasons if LT/ST logic already covered them
+            unique_reasons = []
+            seen_lt_st = any("BUY (" in r for r in reasons)
+            for r in reasons:
+                if "BUY" in r and "BUY (" not in r and seen_lt_st: continue
+                if r not in unique_reasons: unique_reasons.append(r)
+
+            reason_list = "".join([f"<li>{r}</li>" for r in unique_reasons])
+            row_html += f'<td><ul class="watch-reason">{reason_list}</ul></td></tr>'
+            table_html += row_html
+            
+        table_html += "</tbody></table></div>"
+        return table_html
+
+    content = ""
+    content += render_table(buy_group, "BUY TARGETS (Long/Short Term Opportunities)", "buy-header")
+    content += render_table(sell_group, "SELL TARGETS (Near Historical Highs)", "sell-header")
+    content += render_table(watch_group, "WATCHLIST (High Volatility)", "watch-header")
+    content += render_table(other_group, "OTHER STOCKS", "")
+
+    charts_js = ""
+    seen_symbols = set()
+    for group in [buy_group, sell_group, watch_group, other_group]:
+        for item in group:
+            sym = item['symbol']
+            if sym in seen_symbols: continue
+            seen_symbols.add(sym)
+            
+            data = item['data']
+            dates = [h['date'] for h in data['history']]
+            prices = [h['close'] for h in data['history']]
+            
+            charts_js += f"""
+            Plotly.newPlot('chart-{sym}', [{{
+                x: {json.dumps(dates)},
+                y: {json.dumps(prices)},
+                type: 'scatter',
+                mode: 'lines',
+                name: '{sym}',
+                line: {{color: '#3498db'}}
+            }}], {{
+                title: '{sym} Price History (3 Years)',
+                xaxis: {{ title: 'Date' }},
+                yaxis: {{ title: 'Price (USD)' }},
+                margin: {{ t: 40, b: 40, l: 60, r: 20 }}
+            }});
+            """
 
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")) \
-                             .replace("{table_rows}", table_rows) \
-                             .replace("{stock_details}", stock_details) \
+                             .replace("{content}", content) \
                              .replace("{charts_js}", charts_js)
     
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -282,22 +316,32 @@ def generate_html_report(results, output_path=None):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python analyze_stocks.py SYMBOL1 SYMBOL2 ...")
-        sys.exit(1)
-
-    symbols = sys.argv[1:]
+        # Default to reading from reference file if no symbols provided
+        ref_path = Path(__file__).parent.parent / "references" / "tech_stocks.md"
+        if ref_path.exists():
+            print(f"No symbols provided. Reading from {ref_path}...")
+            with open(ref_path, 'r') as f:
+                content = f.read()
+                import re
+                # Find all ticker symbols in patterns like '- AAPL (Apple)' or '- AAPL'
+                symbols = re.findall(r'- ([A-Z]+)', content)
+                # Remove duplicates while preserving order
+                symbols = list(dict.fromkeys(symbols))
+        else:
+            print("Usage: python analyze_stocks.py SYMBOL1 SYMBOL2 ...")
+            sys.exit(1)
+    else:
+        symbols = sys.argv[1:]
     results = []
 
     for sym in symbols:
         print(f"Analyzing {sym}...")
         data = fetch_data(sym)
         if data:
-            lows = calculate_lows(data)
-            results.append({"symbol": sym.upper(), "data": data, "lows": lows})
+            res = calculate_lows(data)
+            results.append(res)
 
     if results:
-        # Sort by proximity to 6m low
-        results.sort(key=lambda x: x['lows']['prox_6m'] if x['lows']['prox_6m'] is not None else 999)
         generate_html_report(results)
     else:
         print("No data found for the provided symbols.")

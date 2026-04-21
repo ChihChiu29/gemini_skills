@@ -100,7 +100,7 @@ def generate_html_report(results, output_path=None):
         "3y": {"low": 15, "high": 95},
         "6m": {"low": 15, "high": 95},
         "3m": {"low": 20, "high": 95},
-        "7d": {"low": 25, "high": 80}
+        "7d": {"low": 25, "high": 95}
     }
 
     buy_group = []

@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import datetime
+import re
 from pathlib import Path
 
 # Try to import yfinance, handle missing library gracefully
@@ -20,18 +21,23 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 def get_cache_path(symbol):
     return CACHE_DIR / f"{symbol.upper()}.json"
 
-def fetch_data(symbol, period="3y"):
+def fetch_data(symbol, period="max"):
     """Fetch historical data and update cache."""
     cache_path = get_cache_path(symbol)
     
+    # Check if we have 'max' data cached and it's fresh
     if cache_path.exists():
         mtime = datetime.datetime.fromtimestamp(cache_path.stat().st_mtime)
         if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
             with open(cache_path, 'r') as f:
-                return json.load(f)
+                cached = json.load(f)
+                # Verify it has history
+                if len(cached.get('history', [])) > 0:
+                    return cached
 
     try:
         ticker = yf.Ticker(symbol)
+        # Fetching 'max' to support interactive buttons
         hist = ticker.history(period=period)
         if hist.empty:
             return None
@@ -111,14 +117,16 @@ def generate_html_report(results, output_path=None):
     for item in results:
         stats = item
         
-        # BUY Criteria (NEW RULES)
+        # BUY Criteria
         lt_hits = 0
         if stats['3y'] and stats['3y']['pos_pct'] < thresholds['3y']['low']: lt_hits += 1
         if stats['6m'] and stats['6m']['pos_pct'] < thresholds['6m']['low']: lt_hits += 1
         if stats['3m'] and stats['3m']['pos_pct'] < thresholds['3m']['low']: lt_hits += 1
         is_lt_buy = lt_hits >= 2
         
-        is_st_buy = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
+        is_st_buy_7d = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
+        is_st_buy_3m = stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0
+        is_st_buy = is_st_buy_7d or is_st_buy_3m
         
         is_buy = is_lt_buy or is_st_buy
         
@@ -283,38 +291,53 @@ def generate_html_report(results, output_path=None):
     charts_js = ""
     stock_details_html = ""
     seen_symbols = set()
-    for group in [buy_group, sell_group, watch_group, other_group]:
-        for item in group:
-            sym = item['symbol']
-            if sym in seen_symbols: continue
-            seen_symbols.add(sym)
-            
-            data = item['data']
-            stock_details_html += f"""
-            <div id="chart-{sym}" class="stock-card">
-                <h2>{sym} - Price History <a href="#" style="font-size: 0.5em; vertical-align: middle;">[Top]</a></h2>
-                <div id="plot-{sym}" class="chart-container"></div>
-            </div>
-            """
-            
-            dates = [h['date'] for h in data['history']]
-            prices = [h['close'] for h in data['history']]
-            
-            charts_js += f"""
-            Plotly.newPlot('plot-{sym}', [{{
-                x: {json.dumps(dates)},
-                y: {json.dumps(prices)},
-                type: 'scatter',
-                mode: 'lines',
-                name: '{sym}',
-                line: {{color: '#3498db'}}
-            }}], {{
-                title: '{sym} Price History (3 Years)',
-                xaxis: {{ title: 'Date' }},
-                yaxis: {{ title: 'Price (USD)' }},
-                margin: {{ t: 40, b: 40, l: 60, r: 20 }}
-            }});
-            """
+    # Combine groups to ensure we get all analyzed stocks
+    all_analyzed = buy_group + sell_group + watch_group + other_group
+    for item in all_analyzed:
+        sym = item['symbol']
+        if sym in seen_symbols: continue
+        seen_symbols.add(sym)
+        
+        data = item['data']
+        stock_details_html += f"""
+        <div id="chart-{sym}" class="stock-card">
+            <h2>{sym} - Price History <a href="#" style="font-size: 0.5em; vertical-align: middle;">[Top]</a></h2>
+            <div id="plot-{sym}" class="chart-container"></div>
+        </div>
+        """
+        
+        dates = [h['date'] for h in data['history']]
+        prices = [h['close'] for h in data['history']]
+        
+        charts_js += f"""
+        Plotly.newPlot('plot-{sym}', [{{
+            x: {json.dumps(dates)},
+            y: {json.dumps(prices)},
+            type: 'scatter',
+            mode: 'lines',
+            name: '{sym}',
+            line: {{color: '#3498db'}}
+        }}], {{
+            title: '{sym} Price History',
+            xaxis: {{ 
+                title: 'Date',
+                rangeselector: {{
+                    buttons: [
+                        {{ count: 7, label: '7d', step: 'day', stepmode: 'backward' }},
+                        {{ count: 3, label: '3m', step: 'month', stepmode: 'backward' }},
+                        {{ count: 6, label: '6m', step: 'month', stepmode: 'backward' }},
+                        {{ count: 1, label: '1y', step: 'year', stepmode: 'backward' }},
+                        {{ count: 3, label: '3y', step: 'year', stepmode: 'backward' }},
+                        {{ step: 'all', label: 'max' }}
+                    ]
+                }},
+                rangeslider: {{ visible: true }},
+                type: 'date'
+            }},
+            yaxis: {{ title: 'Price (USD)' }},
+            margin: {{ t: 40, b: 40, l: 60, r: 20 }}
+        }});
+        """
 
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")) \
                              .replace("{content}", content + stock_details_html) \
@@ -326,24 +349,20 @@ def generate_html_report(results, output_path=None):
 
 def main():
     if len(sys.argv) < 2:
-        # Default to reading from reference file if no symbols provided
         ref_path = Path(__file__).parent.parent / "references" / "tech_stocks.md"
         if ref_path.exists():
             print(f"No symbols provided. Reading from {ref_path}...")
             with open(ref_path, 'r') as f:
                 content = f.read()
-                import re
-                # Find all ticker symbols in patterns like '- AAPL (Apple)' or '- AAPL'
                 symbols = re.findall(r'- ([A-Z]+)', content)
-                # Remove duplicates while preserving order
                 symbols = list(dict.fromkeys(symbols))
         else:
             print("Usage: python analyze_stocks.py SYMBOL1 SYMBOL2 ...")
             sys.exit(1)
     else:
         symbols = sys.argv[1:]
-    results = []
 
+    results = []
     for sym in symbols:
         print(f"Analyzing {sym}...")
         data = fetch_data(sym)

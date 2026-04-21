@@ -226,6 +226,9 @@ def generate_html_report(results, output_path=None):
             
             if stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0:
                  reasons.append('<span class="buy-text">BUY (Short Term)</span>: 7D Low + Volatility')
+            
+            if stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0:
+                 reasons.append('<span class="buy-text">BUY (Short Term)</span>: 3M Vol Bottom')
 
             row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>"
             

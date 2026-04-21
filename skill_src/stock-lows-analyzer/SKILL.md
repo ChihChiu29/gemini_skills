@@ -32,7 +32,7 @@ python scripts/analyze_stocks.py TSLA NVDA AMZN
 - **Automatic Symbol Fetching**: If no symbols are provided, it automatically reads the curated list from `references/tech_stocks.md`.
 - **Categorized BUY Targets**:
     - **Long Term BUY**: Triggered if at least 2 long-term periods (3Y, 6M, 3M) are near their lows (<15% for 3Y/6M, <20% for 3M).
-    - **Short Term BUY**: Triggered if 7D Pos% is low (<25%) AND 7D Volatility is significant (>=10%).
+    - **Short Term BUY**: Triggered if 7D Pos% is low (<25%) AND 7D Volatility is significant (>=10%), OR if 3M Volatility is high (>50%) and 3M Pos% is low (<20%).
 - **Categorized SELL Targets**: Triggered if price is near multi-period highs (>95% for 3Y/6M/3M/7D).
 - **Categorized WATCHLIST**: Triggered by high volatility (3M > 50% or 7D > 20%).
 - **Grouped Results**: Stocks are categorized into **BUY TARGETS**, **SELL TARGETS**, **WATCHLIST**, and **OTHER STOCKS**.

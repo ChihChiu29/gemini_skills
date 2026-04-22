@@ -362,7 +362,8 @@ def generate_html_report(results, output_path=None):
         prices = [h['close'] for h in data['history']]
         
         charts_js += f"""
-        Plotly.newPlot('plot-{sym}', [{{
+        var plotDiv_{sym} = document.getElementById('plot-{sym}');
+        Plotly.newPlot(plotDiv_{sym}, [{{
             x: {json.dumps(dates)},
             y: {json.dumps(prices)},
             type: 'scatter',
@@ -386,11 +387,16 @@ def generate_html_report(results, output_path=None):
                 rangeslider: {{ visible: true }},
                 type: 'date'
             }},
-            yaxis: {{ title: 'Price (USD)' }},
+            yaxis: {{ title: 'Price (USD)', autorange: true }},
             margin: {{ t: 40, b: 40, l: 60, r: 20 }}
         }});
-        """
 
+        plotDiv_{sym}.on('plotly_relayout', function(eventdataData) {{
+            if (eventdataData['xaxis.range[0]'] || eventdataData['xaxis.range'] || eventdataData['xaxis.autorange']) {{
+                autoScaleY(plotDiv_{sym});
+            }}
+        }});
+        """
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")) \
                              .replace("{content}", content + stock_details_html) \
                              .replace("{charts_js}", charts_js)
@@ -425,6 +431,27 @@ def main():
             lt_hits = 0
             if res['3y'] and res['3y']['pos_pct'] < 15: lt_hits += 1
             if res['6m'] and res['6m']['pos_pct'] < 15: lt_hits += 1
+            if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
+            
+            is_st_buy_7d = res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0
+            is_st_buy_3m = res['3m'] and res['3m']['vol'] > 50.0 and res['3m']['pos_pct'] < 20.0
+            
+            if lt_hits >= 2 or is_st_buy_7d or is_st_buy_3m:
+                print(f"  > Fetching options for BUY target {sym}...")
+                res['option_data'] = fetch_option_premium(sym, res['current'])
+            else:
+                res['option_data'] = None
+                
+            results.append(res)
+
+    if results:
+        generate_html_report(results)
+    else:
+        print("No data found for the provided symbols.")
+
+if __name__ == "__main__":
+    main()
+= 1
             if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
             
             is_st_buy_7d = res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0

@@ -59,6 +59,35 @@ def fetch_data(symbol, period="max"):
         print(f"Error fetching {symbol}: {e}")
         return None
 
+def fetch_option_premium(symbol, current_price):
+    """Fetch ATM Call premium for expiry nearest to 30 days."""
+    try:
+        ticker = yf.Ticker(symbol)
+        options = ticker.options
+        if not options:
+            return None
+        
+        # Find expiry closest to 30 days out
+        today = datetime.date.today()
+        target_date = today + datetime.timedelta(days=30)
+        best_expiry = min(options, key=lambda x: abs(datetime.datetime.strptime(x, "%Y-%m-%d").date() - target_date))
+        
+        chain = ticker.option_chain(best_expiry)
+        calls = chain.calls
+        
+        # Find call closest to ATM (strike near current price)
+        calls['diff'] = (calls['strike'] - current_price).abs()
+        atm_call = calls.sort_values('diff').iloc[0]
+        
+        return {
+            "premium": float(atm_call['lastPrice']),
+            "strike": float(atm_call['strike']),
+            "expiry": best_expiry
+        }
+    except Exception as e:
+        print(f"Error fetching options for {symbol}: {e}")
+        return None
+
 def calculate_lows(data):
     history = data['history']
     current_price = data['last_price']
@@ -195,14 +224,17 @@ def generate_html_report(results, output_path=None):
     def render_table(group_results, group_name, header_class):
         if not group_results: return ""
         
+        is_buy_table = "BUY" in group_name
+        
         table_html = f'<div class="group-header {header_class}"><h2>{group_name}</h2></div>'
-        table_html += """
+        table_html += f"""
         <div class="stock-card">
             <table>
                 <thead>
                     <tr>
                         <th rowspan="2">Symbol</th>
                         <th rowspan="2">Price</th>
+                        {"<th rowspan='2'>Investor Ceiling</th>" if is_buy_table else ""}
                         <th colspan="4">3 Year Period</th>
                         <th colspan="4">6 Month Period</th>
                         <th colspan="4">3 Month Period</th>
@@ -238,7 +270,27 @@ def generate_html_report(results, output_path=None):
             if stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0:
                  reasons.append('<span class="buy-text">BUY (Short Term)</span>: 3M Vol Bottom')
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>"
+            # Option Insights Logic
+            ceiling_html = ""
+            if is_buy_table:
+                if stats.get('option_data'):
+                    opt = stats['option_data']
+                    # Ceiling: premium + current_price
+                    ceiling_val = stats['current'] + opt['premium']
+                    ceiling_html = f"""
+                    <td>
+                        <div style='font-size: 0.9em;'>
+                            <strong>Ceiling: ${ceiling_val:.2f}</strong><br>
+                            <span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br>
+                            <span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br>
+                            <small>Exp: {opt['expiry']}</small>
+                        </div>
+                    </td>
+                    """
+                else:
+                    ceiling_html = "<td>-</td>"
+
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>{ceiling_html}"
             
             for period in ["3y", "6m", "3m", "7d"]:
                 p = stats[period]
@@ -368,6 +420,22 @@ def main():
         data = fetch_data(sym)
         if data:
             res = calculate_lows(data)
+            
+            # Check if it meets BUY criteria
+            lt_hits = 0
+            if res['3y'] and res['3y']['pos_pct'] < 15: lt_hits += 1
+            if res['6m'] and res['6m']['pos_pct'] < 15: lt_hits += 1
+            if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
+            
+            is_st_buy_7d = res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0
+            is_st_buy_3m = res['3m'] and res['3m']['vol'] > 50.0 and res['3m']['pos_pct'] < 20.0
+            
+            if lt_hits >= 2 or is_st_buy_7d or is_st_buy_3m:
+                print(f"  > Fetching options for BUY target {sym}...")
+                res['option_data'] = fetch_option_premium(sym, res['current'])
+            else:
+                res['option_data'] = None
+                
             results.append(res)
 
     if results:

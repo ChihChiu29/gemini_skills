@@ -192,7 +192,7 @@ def generate_html_report(results, output_path=None):
             table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.8em; }
             th, td { padding: 8px 10px; text-align: right; border: 1px solid #eee; }
             th { background-color: #34495e; color: white; text-align: center; }
-            td:first-child, th:first-child { text-align: left; font-weight: bold; background-color: #f9f9f9; }
+            tbody td:first-child { text-align: left; font-weight: bold; background-color: #f9f9f9; }
             .red-cell { background-color: #ffcccc; color: #cc0000; font-weight: bold; }
             .green-cell { background-color: #ccffcc; color: #006600; font-weight: bold; }
             .orange-cell { background-color: #ffe5cc; color: #e67e22; font-weight: bold; }
@@ -202,11 +202,40 @@ def generate_html_report(results, output_path=None):
             .buy-header { background-color: #e74c3c; }
             .sell-header { background-color: #27ae60; }
             .watch-header { background-color: #e67e22; }
-            .chart-container { height: 400px; width: 100%; }
+            .chart-container { height: 500px; width: 100%; }
             .buy-text { color: #cc0000; font-weight: bold; }
             .sell-text { color: #006600; font-weight: bold; }
             .watch-text { color: #e67e22; font-weight: bold; }
         </style>
+        <script>
+            function autoScaleY(gd) {
+                const xRange = gd.layout.xaxis.range;
+                const data = gd.data[0];
+                let minVal = Infinity;
+                let maxVal = -Infinity;
+                let found = false;
+
+                const minX = new Date(xRange[0]).getTime();
+                const maxX = new Date(xRange[1]).getTime();
+
+                for (let i = 0; i < data.x.length; i++) {
+                    const xDate = new Date(data.x[i]).getTime();
+                    if (xDate >= minX && xDate <= maxX) {
+                        if (data.y[i] < minVal) minVal = data.y[i];
+                        if (data.y[i] > maxVal) maxVal = data.y[i];
+                        found = true;
+                    }
+                }
+
+                if (found) {
+                    const range = maxVal - minVal;
+                    const margin = range === 0 ? 1 : range * 0.1;
+                    Plotly.relayout(gd, {
+                        'yaxis.range': [minVal - margin, maxVal + margin]
+                    });
+                }
+            }
+        </script>
     </head>
     <body>
         <h1>Stock Analysis: Grouped Watchlist</h1>
@@ -234,7 +263,7 @@ def generate_html_report(results, output_path=None):
                     <tr>
                         <th rowspan="2">Symbol</th>
                         <th rowspan="2">Price</th>
-                        {"<th rowspan='2'>Investor Ceiling</th>" if is_buy_table else ""}
+                        {"<th rowspan='2'>Option Insights</th>" if is_buy_table else ""}
                         <th colspan="4">3 Year Period</th>
                         <th colspan="4">6 Month Period</th>
                         <th colspan="4">3 Month Period</th>
@@ -271,15 +300,14 @@ def generate_html_report(results, output_path=None):
                  reasons.append('<span class="buy-text">BUY (Short Term)</span>: 3M Vol Bottom')
 
             # Option Insights Logic
-            ceiling_html = ""
+            option_html = ""
             if is_buy_table:
                 if stats.get('option_data'):
                     opt = stats['option_data']
-                    # Ceiling: premium + current_price
                     ceiling_val = stats['current'] + opt['premium']
-                    ceiling_html = f"""
+                    option_html = f"""
                     <td>
-                        <div style='font-size: 0.9em;'>
+                        <div style='font-size: 0.9em; text-align: left;'>
                             <strong>Ceiling: ${ceiling_val:.2f}</strong><br>
                             <span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br>
                             <span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br>
@@ -288,9 +316,9 @@ def generate_html_report(results, output_path=None):
                     </td>
                     """
                 else:
-                    ceiling_html = "<td>-</td>"
+                    option_html = "<td>-</td>"
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>{ceiling_html}"
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>{option_html}"
             
             for period in ["3y", "6m", "3m", "7d"]:
                 p = stats[period]
@@ -343,7 +371,6 @@ def generate_html_report(results, output_path=None):
     charts_js = ""
     stock_details_html = ""
     seen_symbols = set()
-    # Combine groups to ensure we get all analyzed stocks
     all_analyzed = buy_group + sell_group + watch_group + other_group
     for item in all_analyzed:
         sym = item['symbol']
@@ -397,6 +424,7 @@ def generate_html_report(results, output_path=None):
             }}
         }});
         """
+
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")) \
                              .replace("{content}", content + stock_details_html) \
                              .replace("{charts_js}", charts_js)
@@ -427,31 +455,9 @@ def main():
         if data:
             res = calculate_lows(data)
             
-            # Check if it meets BUY criteria
             lt_hits = 0
             if res['3y'] and res['3y']['pos_pct'] < 15: lt_hits += 1
             if res['6m'] and res['6m']['pos_pct'] < 15: lt_hits += 1
-            if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
-            
-            is_st_buy_7d = res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0
-            is_st_buy_3m = res['3m'] and res['3m']['vol'] > 50.0 and res['3m']['pos_pct'] < 20.0
-            
-            if lt_hits >= 2 or is_st_buy_7d or is_st_buy_3m:
-                print(f"  > Fetching options for BUY target {sym}...")
-                res['option_data'] = fetch_option_premium(sym, res['current'])
-            else:
-                res['option_data'] = None
-                
-            results.append(res)
-
-    if results:
-        generate_html_report(results)
-    else:
-        print("No data found for the provided symbols.")
-
-if __name__ == "__main__":
-    main()
-= 1
             if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
             
             is_st_buy_7d = res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0

@@ -354,7 +354,25 @@ def generate_html_report(results, output_path=None):
         sym = item['symbol']
         if sym in seen_symbols: continue
         seen_symbols.add(sym)
-        stock_details_html += f"<div id='chart-{sym}' class='stock-card'><h2>{sym} - Performance Analysis <a href='#' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a></h2><div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (1D incl. Off-Hours)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
+        
+        # Build concise summary for chart header
+        summary_parts = []
+        for p_key in ["3y", "6m", "3m", "7d", "1d"]:
+            p = item.get(p_key)
+            if p:
+                low_th, high_th = thresholds[p_key]["low"], thresholds[p_key]["high"]
+                color = "#cc0000" if p['pos_pct'] < low_th else ("#006600" if p['pos_pct'] > high_th else "#333")
+                summary_parts.append(f"<span style='color:{color}; font-weight:bold;'>{p_key.upper()}: {p['pos_pct']:.1f}%</span>")
+        
+        opt_info = ""
+        if item.get('option_data'):
+            opt = item['option_data']
+            opt_info = f" | <span class='buy-text'>Ceiling: ${item['current']+opt['premium']:.2f}</span> (Strike: ${opt['strike']:.2f}, Exp: {opt['expiry']})"
+
+        summary_html = f"<div style='margin-bottom: 15px; font-size: 0.95em; border-bottom: 1px solid #eee; padding-bottom: 10px;'>" \
+                      f"<strong>Current: ${item['current']:.2f}</strong> | {' / '.join(summary_parts)}{opt_info}</div>"
+
+        stock_details_html += f"<div id='chart-{sym}' class='stock-card'><h2>{sym} - Performance Analysis <a href='#' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a></h2>{summary_html}<div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (1D incl. Off-Hours)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
         
         hist_data = item['data']
         dates_max, prices_max = [h['date'] for h in hist_data['history']], [h['close'] for h in hist_data['history']]

@@ -31,13 +31,11 @@ def fetch_data(symbol, period="max"):
         if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
             with open(cache_path, 'r') as f:
                 cached = json.load(f)
-                # Verify it has history
                 if len(cached.get('history', [])) > 0:
                     return cached
 
     try:
         ticker = yf.Ticker(symbol)
-        # Fetching 'max' to support interactive buttons
         hist = ticker.history(period=period)
         if hist.empty:
             return None
@@ -59,6 +57,36 @@ def fetch_data(symbol, period="max"):
         print(f"Error fetching {symbol}: {e}")
         return None
 
+def fetch_live_prices(symbols):
+    """Fetch latest prices including off-hours in one batch."""
+    if not symbols:
+        return {}
+    try:
+        print(f"Fetching live prices (including off-hours) for {len(symbols)} symbols...")
+        # Fetching 1d history with 1m interval and prepost=True to get the absolute latest
+        data = yf.download(symbols, period="1d", interval="1m", prepost=True, progress=False)
+        if data.empty:
+            return {}
+        
+        live_prices = {}
+        # Multi-index columns handling for batch download
+        if len(symbols) > 1:
+            for sym in symbols:
+                try:
+                    price = data['Close'][sym].dropna().iloc[-1]
+                    live_prices[sym.upper()] = float(price)
+                except:
+                    continue
+        else:
+            sym = symbols[0]
+            price = data['Close'].dropna().iloc[-1]
+            live_prices[sym.upper()] = float(price)
+            
+        return live_prices
+    except Exception as e:
+        print(f"Error fetching live prices: {e}")
+        return {}
+
 def fetch_option_premium(symbol, current_price):
     """Fetch ATM Call premium for expiry nearest to 30 days."""
     try:
@@ -67,7 +95,6 @@ def fetch_option_premium(symbol, current_price):
         if not options:
             return None
         
-        # Find expiry closest to 30 days out
         today = datetime.date.today()
         target_date = today + datetime.timedelta(days=30)
         best_expiry = min(options, key=lambda x: abs(datetime.datetime.strptime(x, "%Y-%m-%d").date() - target_date))
@@ -75,7 +102,6 @@ def fetch_option_premium(symbol, current_price):
         chain = ticker.option_chain(best_expiry)
         calls = chain.calls
         
-        # Find call closest to ATM (strike near current price)
         calls['diff'] = (calls['strike'] - current_price).abs()
         atm_call = calls.sort_values('diff').iloc[0]
         
@@ -88,9 +114,9 @@ def fetch_option_premium(symbol, current_price):
         print(f"Error fetching options for {symbol}: {e}")
         return None
 
-def calculate_lows(data):
+def calculate_lows(data, live_price=None):
     history = data['history']
-    current_price = data['last_price']
+    current_price = live_price if live_price is not None else data['last_price']
     
     def get_period_stats(days):
         cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
@@ -101,6 +127,10 @@ def calculate_lows(data):
         lows = [h.get('low', h['close']) for h in relevant]
         p_high = max(highs)
         p_low = min(lows)
+        
+        # Adjust period range with live price if it exceeds historical bounds
+        p_high = max(p_high, current_price)
+        p_low = min(p_low, current_price)
         
         vol = (p_high / p_low - 1) * 100 if p_low > 0 else 0
         pos_pct = (current_price - p_low) / (p_high - p_low) * 100 if p_high > p_low else 0
@@ -116,6 +146,8 @@ def calculate_lows(data):
         "symbol": data["symbol"],
         "data": data,
         "current": current_price,
+        "is_off_hour": live_price is not None and abs(live_price - data['last_price']) > 0.001,
+        "regular_close": data['last_price'],
         "3y": get_period_stats(3 * 365),
         "6m": get_period_stats(180),
         "3m": get_period_stats(90),
@@ -130,7 +162,6 @@ def generate_html_report(results, output_path=None):
     else:
         output_path = Path(output_path)
 
-    # Thresholds & Rules
     thresholds = {
         "3y": {"low": 15, "high": 95},
         "6m": {"low": 15, "high": 95},
@@ -145,21 +176,15 @@ def generate_html_report(results, output_path=None):
 
     for item in results:
         stats = item
-        
-        # BUY Criteria
         lt_hits = 0
         if stats['3y'] and stats['3y']['pos_pct'] < thresholds['3y']['low']: lt_hits += 1
         if stats['6m'] and stats['6m']['pos_pct'] < thresholds['6m']['low']: lt_hits += 1
         if stats['3m'] and stats['3m']['pos_pct'] < thresholds['3m']['low']: lt_hits += 1
         is_lt_buy = lt_hits >= 2
-        
         is_st_buy_7d = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
         is_st_buy_3m = stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0
-        is_st_buy = is_st_buy_7d or is_st_buy_3m
+        is_buy = is_lt_buy or is_st_buy_7d or is_st_buy_3m
         
-        is_buy = is_lt_buy or is_st_buy
-        
-        # SELL/WATCH Criteria
         is_sell = False
         is_watch = False
         for period in ["3y", "6m", "3m", "7d"]:
@@ -173,7 +198,6 @@ def generate_html_report(results, output_path=None):
         if is_watch: watch_group.append(item)
         if not (is_buy or is_sell or is_watch): other_group.append(item)
 
-    # Sort each group alphabetically
     buy_group.sort(key=lambda x: x['symbol'])
     sell_group.sort(key=lambda x: x['symbol'])
     watch_group.sort(key=lambda x: x['symbol'])
@@ -196,6 +220,7 @@ def generate_html_report(results, output_path=None):
             .red-cell { background-color: #ffcccc; color: #cc0000; font-weight: bold; }
             .green-cell { background-color: #ccffcc; color: #006600; font-weight: bold; }
             .orange-cell { background-color: #ffe5cc; color: #e67e22; font-weight: bold; }
+            .off-hour-text { color: #8e44ad; font-weight: bold; font-size: 0.85em; }
             .watch-reason { font-size: 0.85em; list-style-type: none; padding: 0; margin: 0; }
             .watch-reason li { margin-bottom: 2px; }
             .group-header { background-color: #2c3e50; color: white; padding: 10px; margin-top: 40px; border-radius: 8px 8px 0 0; }
@@ -214,10 +239,8 @@ def generate_html_report(results, output_path=None):
                 let minVal = Infinity;
                 let maxVal = -Infinity;
                 let found = false;
-
                 const minX = new Date(xRange[0]).getTime();
                 const maxX = new Date(xRange[1]).getTime();
-
                 for (let i = 0; i < data.x.length; i++) {
                     const xDate = new Date(data.x[i]).getTime();
                     if (xDate >= minX && xDate <= maxX) {
@@ -226,35 +249,26 @@ def generate_html_report(results, output_path=None):
                         found = true;
                     }
                 }
-
                 if (found) {
                     const range = maxVal - minVal;
                     const margin = range === 0 ? 1 : range * 0.1;
-                    Plotly.relayout(gd, {
-                        'yaxis.range': [minVal - margin, maxVal + margin]
-                    });
+                    Plotly.relayout(gd, { 'yaxis.range': [minVal - margin, maxVal + margin] });
                 }
             }
         </script>
     </head>
     <body>
-        <h1>Stock Analysis: Grouped Watchlist</h1>
+        <h1>Stock Analysis: Grouped Watchlist (Including Off-Hours)</h1>
         <p>Generated on: {timestamp}</p>
-        
         {content}
-
-        <script>
-            {charts_js}
-        </script>
+        <script>{charts_js}</script>
     </body>
     </html>
     """
 
     def render_table(group_results, group_name, header_class):
         if not group_results: return ""
-        
         is_buy_table = "BUY" in group_name
-        
         table_html = f'<div class="group-header {header_class}"><h2>{group_name}</h2></div>'
         table_html += f"""
         <div class="stock-card">
@@ -279,73 +293,49 @@ def generate_html_report(results, output_path=None):
                 </thead>
                 <tbody>
         """
-        
         for item in group_results:
             sym = item['symbol']
             stats = item
             reasons = []
             
-            # Recalculate group-specific reason flags
             lt_hits = 0
             if stats['3y'] and stats['3y']['pos_pct'] < thresholds['3y']['low']: lt_hits += 1
             if stats['6m'] and stats['6m']['pos_pct'] < thresholds['6m']['low']: lt_hits += 1
             if stats['3m'] and stats['3m']['pos_pct'] < thresholds['3m']['low']: lt_hits += 1
-            if lt_hits >= 2:
-                reasons.append('<span class="buy-text">BUY (Long Term)</span>: Multi-period low (3Y/6M/3M)')
-            
+            if lt_hits >= 2: reasons.append('<span class="buy-text">BUY (Long Term)</span>: Multi-period low')
             if stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0:
                  reasons.append('<span class="buy-text">BUY (Short Term)</span>: 7D Low + Volatility')
-            
             if stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0:
                  reasons.append('<span class="buy-text">BUY (Short Term)</span>: 3M Vol Bottom')
 
-            # Option Insights Logic
             option_html = ""
             if is_buy_table:
                 if stats.get('option_data'):
                     opt = stats['option_data']
                     ceiling_val = stats['current'] + opt['premium']
-                    option_html = f"""
-                    <td>
-                        <div style='font-size: 0.9em; text-align: left;'>
-                            <strong>Ceiling: ${ceiling_val:.2f}</strong><br>
-                            <span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br>
-                            <span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br>
-                            <small>Exp: {opt['expiry']}</small>
-                        </div>
-                    </td>
-                    """
+                    option_html = f"<td><div style='font-size: 0.9em; text-align: left;'><strong>Ceiling: ${ceiling_val:.2f}</strong><br><span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br><span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br><small>Exp: {opt['expiry']}</small></div></td>"
                 else:
                     option_html = "<td>-</td>"
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>${stats['current']:.2f}</td>{option_html}"
-            
+            price_display = f"${stats['current']:.2f}"
+            if stats.get('is_off_hour'):
+                price_display += f"<br><span class='off-hour-text'>LIVE (Off-Hours)</span><br><small style='color:#999'>Close: ${stats['regular_close']:.2f}</small>"
+
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td>{option_html}"
             for period in ["3y", "6m", "3m", "7d"]:
                 p = stats[period]
                 if p:
-                    low_th = thresholds[period]["low"]
-                    high_th = thresholds[period]["high"]
-                    
-                    pos_cls = ""
-                    if p['pos_pct'] < low_th:
-                        pos_cls = "red-cell"
-                        if not any("BUY" in r for r in reasons):
-                             reasons.append(f'<span class="buy-text">BUY</span>: {period.upper()} Pos% ({p["pos_pct"]:.1f}%) < {low_th}%')
+                    low_th, high_th = thresholds[period]["low"], thresholds[period]["high"]
+                    pos_cls = "red-cell" if p['pos_pct'] < low_th else ("green-cell" if p['pos_pct'] > high_th else "")
+                    if p['pos_pct'] < low_th and not any("BUY" in r for r in reasons):
+                        reasons.append(f'<span class="buy-text">BUY</span>: {period.upper()} Low')
                     elif p['pos_pct'] > high_th:
-                        pos_cls = "green-cell"
-                        reasons.append(f'<span class="sell-text">SELL</span>: {period.upper()} Pos% ({p["pos_pct"]:.1f}%) > {high_th}%')
+                        reasons.append(f'<span class="sell-text">SELL</span>: {period.upper()} High')
                     
-                    vol_cls = ""
-                    if (period == "3m" and p['vol'] > 50) or (period == "7d" and p['vol'] > 20):
-                        vol_cls = "orange-cell"
-                        reasons.append(f'<span class="watch-text">WATCH</span>: {period.upper()} Vol ({p["vol"]:.1f}%) high')
+                    vol_cls = "orange-cell" if ((period == "3m" and p['vol'] > 50) or (period == "7d" and p['vol'] > 20)) else ""
+                    if vol_cls: reasons.append(f'<span class="watch-text">WATCH</span>: {period.upper()} Vol')
                     
-                    row_html += f"""
-                    <td>${p['high']:.2f}</td>
-                    <td>${p['low']:.2f}</td>
-                    <td class="{vol_cls}">{p['vol']:.1f}%</td>
-                    <td class="{pos_cls}">{p['pos_pct']:.1f}%</td>
-                    """
+                    row_html += f"<td>${p['high']:.2f}</td><td>${p['low']:.2f}</td><td class='{vol_cls}'>{p['vol']:.1f}%</td><td class='{pos_cls}'>{p['pos_pct']:.1f}%</td>"
                 else:
                     row_html += "<td>-</td><td>-</td><td>-</td><td>-</td>"
             
@@ -354,90 +344,44 @@ def generate_html_report(results, output_path=None):
             for r in reasons:
                 if "BUY" in r and "BUY (" not in r and seen_lt_st: continue
                 if r not in unique_reasons: unique_reasons.append(r)
-
             reason_list = "".join([f"<li>{r}</li>" for r in unique_reasons])
             row_html += f'<td><ul class="watch-reason">{reason_list}</ul></td></tr>'
             table_html += row_html
-            
         table_html += "</tbody></table></div>"
         return table_html
 
-    content = ""
-    content += render_table(buy_group, "BUY TARGETS (Long/Short Term Opportunities)", "buy-header")
+    content = render_table(buy_group, "BUY TARGETS (Long/Short Term Opportunities)", "buy-header")
     content += render_table(sell_group, "SELL TARGETS (Near Historical Highs)", "sell-header")
     content += render_table(watch_group, "WATCHLIST (High Volatility)", "watch-header")
     content += render_table(other_group, "OTHER STOCKS", "")
 
-    charts_js = ""
-    stock_details_html = ""
-    seen_symbols = set()
+    charts_js, stock_details_html, seen_symbols = "", "", set()
     all_analyzed = buy_group + sell_group + watch_group + other_group
     for item in all_analyzed:
         sym = item['symbol']
         if sym in seen_symbols: continue
         seen_symbols.add(sym)
-        
+        stock_details_html += f"<div id='chart-{sym}' class='stock-card'><h2>{sym} - Price History <a href='#' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a></h2><div id='plot-{sym}' class='chart-container'></div></div>"
         data = item['data']
-        stock_details_html += f"""
-        <div id="chart-{sym}" class="stock-card">
-            <h2>{sym} - Price History <a href="#" style="font-size: 0.5em; vertical-align: middle;">[Top]</a></h2>
-            <div id="plot-{sym}" class="chart-container"></div>
-        </div>
-        """
-        
-        dates = [h['date'] for h in data['history']]
-        prices = [h['close'] for h in data['history']]
-        
+        dates, prices = [h['date'] for h in data['history']], [h['close'] for h in data['history']]
         charts_js += f"""
         var plotDiv_{sym} = document.getElementById('plot-{sym}');
-        Plotly.newPlot(plotDiv_{sym}, [{{
-            x: {json.dumps(dates)},
-            y: {json.dumps(prices)},
-            type: 'scatter',
-            mode: 'lines',
-            name: '{sym}',
-            line: {{color: '#3498db'}}
-        }}], {{
+        Plotly.newPlot(plotDiv_{sym}, [{{ x: {json.dumps(dates)}, y: {json.dumps(prices)}, type: 'scatter', mode: 'lines', name: '{sym}', line: {{color: '#3498db'}} }}], {{
             title: '{sym} Price History',
-            xaxis: {{ 
-                title: 'Date',
-                rangeselector: {{
-                    buttons: [
-                        {{ count: 7, label: '7d', step: 'day', stepmode: 'backward' }},
-                        {{ count: 3, label: '3m', step: 'month', stepmode: 'backward' }},
-                        {{ count: 6, label: '6m', step: 'month', stepmode: 'backward' }},
-                        {{ count: 1, label: '1y', step: 'year', stepmode: 'backward' }},
-                        {{ count: 3, label: '3y', step: 'year', stepmode: 'backward' }},
-                        {{ step: 'all', label: 'max' }}
-                    ]
-                }},
-                rangeslider: {{ visible: true }},
-                type: 'date'
-            }},
-            yaxis: {{ title: 'Price (USD)', autorange: true }},
-            margin: {{ t: 40, b: 40, l: 60, r: 20 }}
+            xaxis: {{ title: 'Date', rangeselector: {{ buttons: [ {{ count: 7, label: '7d', step: 'day', stepmode: 'backward' }}, {{ count: 3, label: '3m', step: 'month', stepmode: 'backward' }}, {{ count: 6, label: '6m', step: 'month', stepmode: 'backward' }}, {{ count: 1, label: '1y', step: 'year', stepmode: 'backward' }}, {{ count: 3, label: '3y', step: 'year', stepmode: 'backward' }}, {{ step: 'all', label: 'max' }} ] }}, rangeslider: {{ visible: true }}, type: 'date' }},
+            yaxis: {{ title: 'Price (USD)', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }}
         }});
-
-        plotDiv_{sym}.on('plotly_relayout', function(eventdataData) {{
-            if (eventdataData['xaxis.range[0]'] || eventdataData['xaxis.range'] || eventdataData['xaxis.autorange']) {{
-                autoScaleY(plotDiv_{sym});
-            }}
-        }});
+        plotDiv_{sym}.on('plotly_relayout', function(ed) {{ if (ed['xaxis.range[0]'] || ed['xaxis.range'] || ed['xaxis.autorange']) {{ autoScaleY(plotDiv_{sym}); }} }});
         """
-
-    full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")) \
-                             .replace("{content}", content + stock_details_html) \
-                             .replace("{charts_js}", charts_js)
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(full_html)
-    print(f"Report generated successfully: {os.path.abspath(output_path)}")
+    full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")).replace("{content}", content + stock_details_html).replace("{charts_js}", charts_js)
+    with open(output_path, 'w', encoding='utf-8') as f: f.write(full_html)
+    print(f"Report generated: {os.path.abspath(output_path)}")
 
 def main():
     if len(sys.argv) < 2:
         ref_path = Path(__file__).parent.parent / "references" / "tech_stocks.md"
         if ref_path.exists():
-            print(f"No symbols provided. Reading from {ref_path}...")
+            print(f"Reading default symbols from {ref_path}...")
             with open(ref_path, 'r') as f:
                 content = f.read()
                 symbols = re.findall(r'- ([A-Z]+)', content)
@@ -448,18 +392,22 @@ def main():
     else:
         symbols = sys.argv[1:]
 
+    # Fetch live prices (including off-hours) in one batch
+    live_prices = fetch_live_prices(symbols)
+
     results = []
     for sym in symbols:
         print(f"Analyzing {sym}...")
         data = fetch_data(sym)
         if data:
-            res = calculate_lows(data)
+            live_price = live_prices.get(sym.upper())
+            res = calculate_lows(data, live_price=live_price)
             
+            # Decide on option fetch based on BUY criteria
             lt_hits = 0
             if res['3y'] and res['3y']['pos_pct'] < 15: lt_hits += 1
             if res['6m'] and res['6m']['pos_pct'] < 15: lt_hits += 1
             if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
-            
             is_st_buy_7d = res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0
             is_st_buy_3m = res['3m'] and res['3m']['vol'] > 50.0 and res['3m']['pos_pct'] < 20.0
             
@@ -474,7 +422,7 @@ def main():
     if results:
         generate_html_report(results)
     else:
-        print("No data found for the provided symbols.")
+        print("No data found for symbols.")
 
 if __name__ == "__main__":
     main()

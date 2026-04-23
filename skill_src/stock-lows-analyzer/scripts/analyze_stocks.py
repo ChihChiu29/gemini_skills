@@ -381,8 +381,15 @@ def generate_html_report(results, output_path=None):
 
         var plot1d_{sym} = document.getElementById('plot-1d-{sym}');
         var data1d_{sym} = {json.dumps(item['intraday'])};
+
         var regX = [], regY = [], offX = [], offY = [];
+        var rangeX = [], rangeUpper = [], rangeLower = [];
+
         data1d_{sym}.forEach(function(p) {{
+            rangeX.push(p.time);
+            rangeUpper.push(p.high);
+            rangeLower.push(p.low);
+
             if (p.is_regular) {{
                 regX.push(p.time); regY.push(p.price);
                 offX.push(p.time); offY.push(null);
@@ -391,14 +398,27 @@ def generate_html_report(results, output_path=None):
                 regX.push(p.time); regY.push(null);
             }}
         }});
+
         Plotly.newPlot(plot1d_{sym}, [
-            {{ x: regX, y: regY, type: 'scatter', mode: 'lines+markers', name: 'Regular', line: {{color: '#2980b9'}} }},
-            {{ x: offX, y: offY, type: 'scatter', mode: 'lines+markers', name: 'Off-Hours', line: {{color: '#8e44ad', dash: 'dot'}} }}
+            // Range Area
+            {{
+                x: rangeX.concat(rangeX.slice().reverse()),
+                y: rangeUpper.concat(rangeLower.slice().reverse()),
+                fill: 'toself',
+                fillcolor: 'rgba(52, 152, 219, 0.15)',
+                line: {{color: 'transparent'}},
+                name: 'High-Low Range',
+                showlegend: true,
+                hoverinfo: 'skip'
+            }},
+            {{ x: regX, y: regY, type: 'scatter', mode: 'lines', name: 'Regular', line: {{color: '#2980b9', width: 2}} }},
+            {{ x: offX, y: offY, type: 'scatter', mode: 'lines', name: 'Off-Hours', line: {{color: '#8e44ad', dash: 'dot', width: 2}} }}
         ], {{
-            title: 'Intraday (Live)', xaxis: {{ title: 'Time', rangeslider: {{ visible: true }} }},
+            title: 'Intraday (Live Range)', xaxis: {{ title: 'Time', rangeslider: {{ visible: true }} }},
             yaxis: {{ title: 'Price', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }},
             legend: {{ orientation: 'h', y: -0.2 }}
         }});
+
         """
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")).replace("{content}", content + stock_details_html).replace("{charts_js}", charts_js)
     with open(output_path, 'w', encoding='utf-8') as f: f.write(full_html)

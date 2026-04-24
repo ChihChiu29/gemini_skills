@@ -291,21 +291,34 @@ def generate_html_report(results, output_path=None):
         <script>
             function autoScaleY(gd) {
                 const xRange = gd.layout.xaxis.range;
-                const data = gd.data[0];
+                if (!xRange || xRange.length < 2) return;
+
                 let minVal = Infinity, maxVal = -Infinity, found = false;
-                const minX = new Date(xRange[0]).getTime(), maxX = new Date(xRange[1]).getTime();
-                for (let i = 0; i < data.x.length; i++) {
-                    const xDate = new Date(data.x[i]).getTime();
-                    if (xDate >= minX && xDate <= maxX) {
-                        if (data.y[i] < minVal) minVal = data.y[i];
-                        if (data.y[i] > maxVal) maxVal = data.y[i];
-                        found = true;
+                const minX = new Date(xRange[0]).getTime();
+                const maxX = new Date(xRange[1]).getTime();
+
+                gd.data.forEach(trace => {
+                    if (!trace.x || !trace.y || trace.name === 'Range') return;
+                    for (let i = 0; i < trace.x.length; i++) {
+                        const xDate = new Date(trace.x[i]).getTime();
+                        if (xDate >= minX && xDate <= maxX) {
+                            const yVal = parseFloat(trace.y[i]);
+                            if (!isNaN(yVal)) {
+                                if (yVal < minVal) minVal = yVal;
+                                if (yVal > maxVal) maxVal = yVal;
+                                found = true;
+                            }
+                        }
                     }
-                }
-                if (found) {
+                });
+
+                if (found && minVal !== Infinity) {
                     const range = maxVal - minVal;
-                    const margin = range === 0 ? 1 : range * 0.1;
-                    Plotly.relayout(gd, { 'yaxis.range': [minVal - margin, maxVal + margin] });
+                    const margin = range === 0 ? (minVal * 0.05 || 1) : range * 0.1;
+                    Plotly.relayout(gd, {
+                        'yaxis.range': [minVal - margin, maxVal + margin],
+                        'yaxis.autorange': false
+                    });
                 }
             }
         </script>

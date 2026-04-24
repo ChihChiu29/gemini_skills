@@ -22,38 +22,61 @@ def get_cache_path(symbol):
     return CACHE_DIR / f"{symbol.upper()}.json"
 
 def fetch_data(symbol, period="max"):
-    """Fetch historical data and update cache."""
+    """Fetch historical data, metadata, and analyst targets. Updates history in cache."""
     cache_path = get_cache_path(symbol)
+    cached = None
     
     if cache_path.exists():
-        mtime = datetime.datetime.fromtimestamp(cache_path.stat().st_mtime)
+        with open(cache_path, 'r') as f:
+            cached = json.load(f)
+
+    # Refresh data if cache is missing or older than 24 hours
+    needs_refresh = True
+    if cached and 'updated_at' in cached:
+        mtime = datetime.datetime.fromisoformat(cached['updated_at'])
         if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
-            with open(cache_path, 'r') as f:
-                cached = json.load(f)
-                # Ensure all metadata fields are present, otherwise re-fetch
-                if all(k in cached for k in ['name', 'description', 'website']) and len(cached.get('history', [])) > 0:
-                    return cached
+            # Check if we have all necessary metadata
+            if all(k in cached for k in ['name', 'description', 'website', 'target_history']):
+                needs_refresh = False
+
+    if not needs_refresh:
+        return cached
 
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period)
         if hist.empty:
-            return None
-        
+            return cached # Return what we have if API fails
+
         info = ticker.info
         company_name = info.get('longName') or info.get('shortName') or symbol.upper()
+        current_target = info.get('targetMeanPrice')
         
+        # Maintain a history of analyst targets over time
+        target_history = cached.get('target_history', []) if cached else []
+        today_str = str(datetime.date.today())
+        
+        # Only add to target history if target changed or is first entry for the day
+        if current_target and (not target_history or target_history[-1].get('date') != today_str):
+            target_history.append({
+                "date": today_str,
+                "target": float(current_target)
+            })
+
         data = {
             "symbol": symbol.upper(),
             "name": company_name,
             "description": info.get('longBusinessSummary', "No description available."),
             "website": info.get('website', ""),
             "last_price": float(hist['Close'].iloc[-1]),
+            "target_mean": float(current_target) if current_target else None,
+            "target_history": target_history,
+            "recommendation": info.get('recommendationKey', "N/A"),
             "history": [
                 {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 
                 for d, c, h, l in zip(hist.index, hist['Close'], hist['High'], hist['Low'])
             ],
-            "updated_at": str(datetime.datetime.now())
+            "updated_at": datetime.datetime.now().isoformat()
         }
         
         with open(cache_path, 'w') as f:
@@ -61,7 +84,7 @@ def fetch_data(symbol, period="max"):
         return data
     except Exception as e:
         print(f"Error fetching {symbol}: {e}")
-        return None
+        return cached
 
 def fetch_live_info(symbols):
     """Fetch latest intraday data including off-hours in one batch."""
@@ -69,7 +92,6 @@ def fetch_live_info(symbols):
         return {}
     try:
         print(f"Fetching live intraday data for {len(symbols)} symbols...")
-        # Use 5m interval for intraday data
         data = yf.download(symbols, period="1d", interval="5m", prepost=True, progress=False)
         if data.empty:
             return {}
@@ -80,17 +102,22 @@ def fetch_live_info(symbols):
             if close_series.empty: return None
             price = float(close_series.iloc[-1])
             intraday = []
-            for t, p in close_series.items():
+            for t in close_series.index:
                 is_reg = False
                 try:
                     local_time = t.astimezone(t.tzinfo) if t.tzinfo else t
                     h, m = local_time.hour, local_time.minute
                     if (h > 9 or (h == 9 and m >= 30)) and h < 16:
                         is_reg = True
-                except:
-                    pass
+                except: pass
                 
-                intraday.append({"time": str(t), "price": float(p), "is_regular": is_reg})
+                intraday.append({
+                    "time": str(t), 
+                    "price": float(close_series[t]), 
+                    "high": float(high_series[t]), 
+                    "low": float(low_series[t]), 
+                    "is_regular": is_reg
+                })
                 
             return {
                 "price": price,
@@ -121,8 +148,7 @@ def fetch_option_premium(symbol, current_price):
     try:
         ticker = yf.Ticker(symbol)
         options = ticker.options
-        if not options:
-            return None
+        if not options: return None
         
         today = datetime.date.today()
         target_date = today + datetime.timedelta(days=30)
@@ -130,7 +156,6 @@ def fetch_option_premium(symbol, current_price):
         
         chain = ticker.option_chain(best_expiry)
         calls = chain.calls
-        
         calls['diff'] = (calls['strike'] - current_price).abs()
         atm_call = calls.sort_values('diff').iloc[0]
         
@@ -169,6 +194,11 @@ def calculate_lows(data, live_info=None):
         pos_pct = (current_price - p_low) / (p_high - p_low) * 100 if p_high > p_low else 0
         period_1d = {"high": p_high, "low": p_low, "vol": vol, "pos_pct": pos_pct}
 
+    # Upside potential based on analyst target
+    upside = 0
+    if data.get('target_mean'):
+        upside = (data['target_mean'] / current_price - 1) * 100
+
     return {
         "symbol": data["symbol"],
         "data": data,
@@ -176,6 +206,9 @@ def calculate_lows(data, live_info=None):
         "intraday": live_info['intraday'] if live_info else [],
         "is_off_hour": live_info is not None and abs(current_price - data['last_price']) > 0.001,
         "regular_close": data['last_price'],
+        "target_mean": data.get('target_mean'),
+        "upside": upside,
+        "recommendation": data.get('recommendation', 'N/A'),
         "3y": get_period_stats(3 * 365),
         "6m": get_period_stats(180),
         "3m": get_period_stats(90),
@@ -188,8 +221,7 @@ def generate_html_report(results, output_path=None):
     if output_path is None:
         filename = f"stock_report_{now.strftime('%Y%m%d_%H%M%S')}.html"
         output_path = OUTPUT_DIR / filename
-    else:
-        output_path = Path(output_path)
+    else: output_path = Path(output_path)
 
     thresholds = {
         "3y": {"low": 15, "high": 95},
@@ -203,13 +235,11 @@ def generate_html_report(results, output_path=None):
 
     for item in results:
         stats = item
-        lt_hits = 0
-        for p_key in ['3y', '6m', '3m']:
-            if stats[p_key] and stats[p_key]['pos_pct'] < thresholds[p_key]['low']: lt_hits += 1
+        lt_hits = sum(1 for p in ['3y', '6m', '3m'] if stats[p] and stats[p]['pos_pct'] < thresholds[p]['low'])
         is_lt_buy = lt_hits >= 2
-        is_st_buy_7d = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
-        is_st_buy_3m = stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0
-        is_buy = is_lt_buy or is_st_buy_7d or is_st_buy_3m
+        is_st_buy = (stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0) or \
+                    (stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0)
+        is_buy = is_lt_buy or is_st_buy
         
         is_sell = False
         is_watch = False
@@ -224,10 +254,8 @@ def generate_html_report(results, output_path=None):
         if is_watch: watch_group.append(item)
         if not (is_buy or is_sell or is_watch): other_group.append(item)
 
-    buy_group.sort(key=lambda x: x['symbol'])
-    sell_group.sort(key=lambda x: x['symbol'])
-    watch_group.sort(key=lambda x: x['symbol'])
-    other_group.sort(key=lambda x: x['symbol'])
+    buy_group.sort(key=lambda x: x['symbol']); sell_group.sort(key=lambda x: x['symbol'])
+    watch_group.sort(key=lambda x: x['symbol']); other_group.sort(key=lambda x: x['symbol'])
 
     html_template = """
     <!DOCTYPE html>
@@ -256,6 +284,7 @@ def generate_html_report(results, output_path=None):
             .buy-text { color: #cc0000; font-weight: bold; }
             .sell-text { color: #006600; font-weight: bold; }
             .watch-text { color: #e67e22; font-weight: bold; }
+            .upside-text { color: #27ae60; font-weight: bold; }
             .charts-row { display: flex; flex-wrap: wrap; gap: 20px; }
             .chart-box { flex: 1; min-width: 600px; }
         </style>
@@ -282,7 +311,7 @@ def generate_html_report(results, output_path=None):
         </script>
     </head>
     <body>
-        <h1>Stock Analysis: Grouped Watchlist (Including Off-Hours)</h1>
+        <h1>Stock Analysis: Grouped Watchlist (Including Off-Hours & Analyst Targets)</h1>
         <p>Generated on: {timestamp}</p>
         {content}
         <script>{charts_js}</script>
@@ -301,6 +330,7 @@ def generate_html_report(results, output_path=None):
                     <tr>
                         <th rowspan="2">Symbol</th>
                         <th rowspan="2">Price</th>
+                        <th rowspan="2">Analyst Target (Upside)</th>
                         {"<th rowspan='2'>Option Insights</th>" if is_buy_table else ""}
                         <th colspan="4">3 Year Period</th>
                         <th colspan="4">6 Month Period</th>
@@ -327,6 +357,10 @@ def generate_html_report(results, output_path=None):
             if stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0: reasons.append('<span class="buy-text">BUY (Short Term)</span>: 7D Low + Vol')
             if stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0: reasons.append('<span class="buy-text">BUY (Short Term)</span>: 3M Vol Bottom')
 
+            target_display = f"${stats['target_mean']:.2f}" if stats.get('target_mean') else "N/A"
+            if stats.get('upside'):
+                 target_display += f"<br><span class='upside-text'>{stats['upside']:+.1f}% Upside</span>"
+
             option_html = ""
             if is_buy_table:
                 if stats.get('option_data'):
@@ -337,7 +371,7 @@ def generate_html_report(results, output_path=None):
             price_display = f"${stats['current']:.2f}"
             if stats.get('is_off_hour'): price_display += f"<br><span class='off-hour-text'>LIVE (Off-Hours)</span><br><small style='color:#999'>Close: ${stats['regular_close']:.2f}</small>"
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td>{option_html}"
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td><td>{target_display}</td>{option_html}"
             for p_key in ["3y", "6m", "3m", "7d", "1d"]:
                 p = stats[p_key]
                 if p:
@@ -372,76 +406,64 @@ def generate_html_report(results, output_path=None):
             if p:
                 color = "#cc0000" if p['pos_pct'] < thresholds[p_key]["low"] else ("#006600" if p['pos_pct'] > thresholds[p_key]["high"] else "#333")
                 summary_parts.append(f"<span style='color:{color}; font-weight:bold;'>{p_key.upper()}: {p['pos_pct']:.1f}%</span>")
-        opt_info = f" | <span class='buy-text'>Ceiling: ${item['current']+item['option_data']['premium']:.2f}</span> (Strike: ${item['option_data']['strike']:.2f})" if item.get('option_data') else ""
-        summary_html = f"<div style='margin-bottom: 15px; font-size: 0.95em; border-bottom: 1px solid #eee; padding-bottom: 10px;'>" \
-                      f"<strong>Current: ${item['current']:.2f}</strong> | {' / '.join(summary_parts)}{opt_info}</div>"
+        
+        target_info = f" | <strong>Analyst Target: ${item['target_mean']:.2f}</strong> ({item['upside']:+.1f}% Upside)" if item.get('target_mean') else ""
+        opt_info = f" | <span class='buy-text'>Ceiling: ${item['current']+item['option_data']['premium']:.2f}</span>" if item.get('option_data') else ""
+        summary_html = f"<div style='margin-bottom: 15px; font-size: 0.95em; border-bottom: 1px solid #eee; padding-bottom: 10px;'><strong>Current: ${item['current']:.2f}</strong> | {' / '.join(summary_parts)}{target_info}{opt_info}</div>"
 
-        # Company Header with Link and Description
         comp_info = item['data']
         comp_name = comp_info.get('name', sym)
         comp_site = comp_info.get('website', "")
         comp_desc = comp_info.get('description', "")
-        # Limit description to ~200 chars for conciseness
-        short_desc = (comp_desc[:200] + '...') if len(comp_desc) > 200 else comp_desc
-
+        short_desc = (comp_desc[:400] + '...') if len(comp_desc) > 400 else comp_desc
         site_link = f" | <a href='{comp_site}' target='_blank' style='font-size: 0.6em; color: #3498db;'>{comp_site}</a>" if comp_site else ""
-
-        header_html = f"<div style='margin-bottom: 20px;'> " \
-                     f"<h2>{comp_name} ({sym}) 📈 <a href='#' style='font-size: 0.4em; vertical-align: middle;'>[Top]</a>{site_link}</h2>" \
-                     f"<p style='font-size: 0.85em; color: #555; font-style: italic; margin-top: -10px;'>{short_desc}</p>" \
-                     f"{summary_html}</div>"
-
-        stock_details_html += f"<div id='chart-{sym}' class='stock-card'>{header_html}<div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (1D incl. Off-Hours)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
-
+        header_html = f"<div style='margin-bottom: 20px;'> <h2>{comp_name} ({sym}) 📈 <a href='#' style='font-size: 0.4em; vertical-align: middle;'>[Top]</a>{site_link}</h2> <p style='font-size: 0.85em; color: #555; font-style: italic; margin-top: -10px;'>{short_desc}</p> {summary_html}</div>"
+        stock_details_html += f"<div id='chart-{sym}' class='stock-card'>{header_html}<div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (Live)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
+        
         dates_max, prices_max = [h['date'] for h in comp_info['history']], [h['close'] for h in comp_info['history']]
+        
+        # Build Analyst Target History Trace
+        target_dates = [t['date'] for t in comp_info.get('target_history', [])]
+        target_values = [t['target'] for t in comp_info.get('target_history', [])]
+        
         charts_js += f"""
         var plotMax_{sym} = document.getElementById('plot-max-{sym}');
-        Plotly.newPlot(plotMax_{sym}, [{{ x: {json.dumps(dates_max)}, y: {json.dumps(prices_max)}, type: 'scatter', mode: 'lines', name: '{sym} Hist', line: {{color: '#3498db'}} }}], {{
-            title: 'Historical', xaxis: {{ title: 'Date', rangeselector: {{ buttons: [ {{ count: 7, label: '7d', step: 'day', stepmode: 'backward' }}, {{ count: 3, label: '3m', step: 'month', stepmode: 'backward' }}, {{ count: 6, label: '6m', step: 'month', stepmode: 'backward' }}, {{ count: 1, label: '1y', step: 'year', stepmode: 'backward' }}, {{ count: 3, label: '3y', step: 'year', stepmode: 'backward' }}, {{ step: 'all', label: 'max' }} ] }}, rangeslider: {{ visible: true }}, type: 'date' }},
-            yaxis: {{ title: 'Price', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }}
+        var traces_{sym} = [{{ x: {json.dumps(dates_max)}, y: {json.dumps(prices_max)}, type: 'scatter', mode: 'lines', name: 'Price', line: {{color: '#3498db'}} }}];
+        
+        if ({json.dumps(target_dates)}.length > 0) {{
+            traces_{sym}.push({{
+                x: {json.dumps(target_dates)},
+                y: {json.dumps(target_values)},
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Analyst Target',
+                line: {{color: '#27ae60', dash: 'dash'}},
+                marker: {{size: 8}}
+            }});
+        }}
+
+        Plotly.newPlot(plotMax_{sym}, traces_{sym}, {{
+            title: 'Historical & Target Evolution', xaxis: {{ title: 'Date', rangeselector: {{ buttons: [ {{ count: 7, label: '7d', step: 'day', stepmode: 'backward' }}, {{ count: 3, label: '3m', step: 'month', stepmode: 'backward' }}, {{ count: 6, label: '6m', step: 'month', stepmode: 'backward' }}, {{ count: 1, label: '1y', step: 'year', stepmode: 'backward' }}, {{ count: 3, label: '3y', step: 'year', stepmode: 'backward' }}, {{ step: 'all', label: 'max' }} ] }}, rangeslider: {{ visible: true }}, type: 'date' }},
+            yaxis: {{ title: 'Price', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }}, legend: {{ orientation: 'h', y: -0.5 }}
         }});
         plotMax_{sym}.on('plotly_relayout', function(ed) {{ if (ed['xaxis.range[0]'] || ed['xaxis.range'] || ed['xaxis.autorange']) {{ autoScaleY(plotMax_{sym}); }} }});
 
         var plot1d_{sym} = document.getElementById('plot-1d-{sym}');
         var data1d_{sym} = {json.dumps(item['intraday'])};
-
-        var regX = [], regY = [], offX = [], offY = [];
-        var rangeX = [], rangeUpper = [], rangeLower = [];
-
+        var regX = [], regY = [], offX = [], offY = [], rangeX = [], rangeUpper = [], rangeLower = [];
         data1d_{sym}.forEach(function(p) {{
-            rangeX.push(p.time);
-            rangeUpper.push(p.high);
-            rangeLower.push(p.low);
-
-            if (p.is_regular) {{
-                regX.push(p.time); regY.push(p.price);
-                offX.push(p.time); offY.push(null);
-            }} else {{
-                offX.push(p.time); offY.push(p.price);
-                regX.push(p.time); regY.push(null);
-            }}
+            rangeX.push(p.time); rangeUpper.push(p.high); rangeLower.push(p.low);
+            if (p.is_regular) {{ regX.push(p.time); regY.push(p.price); offX.push(p.time); offY.push(null); }} 
+            else {{ offX.push(p.time); offY.push(p.price); regX.push(p.time); regY.push(null); }}
         }});
-
         Plotly.newPlot(plot1d_{sym}, [
-            // Range Area
-            {{
-                x: rangeX.concat(rangeX.slice().reverse()),
-                y: rangeUpper.concat(rangeLower.slice().reverse()),
-                fill: 'toself',
-                fillcolor: 'rgba(52, 152, 219, 0.15)',
-                line: {{color: 'transparent'}},
-                name: 'High-Low Range',
-                showlegend: true,
-                hoverinfo: 'skip'
-            }},
+            {{ x: rangeX.concat(rangeX.slice().reverse()), y: rangeUpper.concat(rangeLower.slice().reverse()), fill: 'toself', fillcolor: 'rgba(52, 152, 219, 0.15)', line: {{color: 'transparent'}}, name: 'Range', showlegend: true, hoverinfo: 'skip' }},
             {{ x: regX, y: regY, type: 'scatter', mode: 'lines', name: 'Regular', line: {{color: '#2980b9', width: 2}} }},
             {{ x: offX, y: offY, type: 'scatter', mode: 'lines', name: 'Off-Hours', line: {{color: '#8e44ad', dash: 'dot', width: 2}} }}
         ], {{
             title: 'Intraday (Live Range)', xaxis: {{ title: 'Time', rangeslider: {{ visible: true }} }},
-            yaxis: {{ title: 'Price', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }},
-            legend: {{ orientation: 'h', y: -0.2 }}
+            yaxis: {{ title: 'Price', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }}, legend: {{ orientation: 'h', y: -0.2 }}
         }});
-
         """
     full_html = html_template.replace("{timestamp}", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")).replace("{content}", content + stock_details_html).replace("{charts_js}", charts_js)
     with open(output_path, 'w', encoding='utf-8') as f: f.write(full_html)

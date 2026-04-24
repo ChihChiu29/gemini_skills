@@ -30,7 +30,8 @@ def fetch_data(symbol, period="max"):
         if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
             with open(cache_path, 'r') as f:
                 cached = json.load(f)
-                if len(cached.get('history', [])) > 0:
+                # Ensure all metadata fields are present, otherwise re-fetch
+                if all(k in cached for k in ['name', 'description', 'website']) and len(cached.get('history', [])) > 0:
                     return cached
 
     try:

@@ -40,8 +40,14 @@ def fetch_data(symbol, period="max"):
         if hist.empty:
             return None
         
+        info = ticker.info
+        company_name = info.get('longName') or info.get('shortName') or symbol.upper()
+        
         data = {
             "symbol": symbol.upper(),
+            "name": company_name,
+            "description": info.get('longBusinessSummary', "No description available."),
+            "website": info.get('website', ""),
             "last_price": float(hist['Close'].iloc[-1]),
             "history": [
                 {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 

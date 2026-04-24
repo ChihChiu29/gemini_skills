@@ -366,11 +366,27 @@ def generate_html_report(results, output_path=None):
                 color = "#cc0000" if p['pos_pct'] < thresholds[p_key]["low"] else ("#006600" if p['pos_pct'] > thresholds[p_key]["high"] else "#333")
                 summary_parts.append(f"<span style='color:{color}; font-weight:bold;'>{p_key.upper()}: {p['pos_pct']:.1f}%</span>")
         opt_info = f" | <span class='buy-text'>Ceiling: ${item['current']+item['option_data']['premium']:.2f}</span> (Strike: ${item['option_data']['strike']:.2f})" if item.get('option_data') else ""
-        summary_html = f"<div style='margin-bottom: 15px; font-size: 0.95em; border-bottom: 1px solid #eee; padding-bottom: 10px;'><strong>Current: ${item['current']:.2f}</strong> | {' / '.join(summary_parts)}{opt_info}</div>"
-        stock_details_html += f"<div id='chart-{sym}' class='stock-card'><h2>{sym} - Performance Analysis <a href='#' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a></h2>{summary_html}<div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (1D incl. Off-Hours)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
-        
-        hist_data = item['data']
-        dates_max, prices_max = [h['date'] for h in hist_data['history']], [h['close'] for h in hist_data['history']]
+        summary_html = f"<div style='margin-bottom: 15px; font-size: 0.95em; border-bottom: 1px solid #eee; padding-bottom: 10px;'>" \
+                      f"<strong>Current: ${item['current']:.2f}</strong> | {' / '.join(summary_parts)}{opt_info}</div>"
+
+        # Company Header with Link and Description
+        comp_info = item['data']
+        comp_name = comp_info.get('name', sym)
+        comp_site = comp_info.get('website', "")
+        comp_desc = comp_info.get('description', "")
+        # Limit description to ~200 chars for conciseness
+        short_desc = (comp_desc[:200] + '...') if len(comp_desc) > 200 else comp_desc
+
+        site_link = f" | <a href='{comp_site}' target='_blank' style='font-size: 0.6em; color: #3498db;'>{comp_site}</a>" if comp_site else ""
+
+        header_html = f"<div style='margin-bottom: 20px;'> " \
+                     f"<h2>{comp_name} ({sym}) 📈 <a href='#' style='font-size: 0.4em; vertical-align: middle;'>[Top]</a>{site_link}</h2>" \
+                     f"<p style='font-size: 0.85em; color: #555; font-style: italic; margin-top: -10px;'>{short_desc}</p>" \
+                     f"{summary_html}</div>"
+
+        stock_details_html += f"<div id='chart-{sym}' class='stock-card'>{header_html}<div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (1D incl. Off-Hours)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
+
+        dates_max, prices_max = [h['date'] for h in comp_info['history']], [h['close'] for h in comp_info['history']]
         charts_js += f"""
         var plotMax_{sym} = document.getElementById('plot-max-{sym}');
         Plotly.newPlot(plotMax_{sym}, [{{ x: {json.dumps(dates_max)}, y: {json.dumps(prices_max)}, type: 'scatter', mode: 'lines', name: '{sym} Hist', line: {{color: '#3498db'}} }}], {{

@@ -294,16 +294,28 @@ def generate_html_report(results, output_path=None):
                 if (!xRange || xRange.length < 2) return;
 
                 let minVal = Infinity, maxVal = -Infinity, found = false;
-                const minX = new Date(xRange[0]).getTime();
-                const maxX = new Date(xRange[1]).getTime();
+                
+                // Helper to get reliable timestamp
+                const getTs = (v) => {
+                    if (!v) return 0;
+                    if (typeof v === 'number') return v;
+                    return new Date(v).getTime();
+                };
+
+                const minX = getTs(xRange[0]);
+                const maxX = getTs(xRange[1]);
+
+                if (!minX || !maxX) return;
 
                 gd.data.forEach(trace => {
-                    if (!trace.x || !trace.y || trace.name === 'Range') return;
+                    // Skip the High-Low range area and empty traces
+                    if (!trace.x || !trace.y || trace.name === 'Range' || trace.fill === 'toself') return;
+                    
                     for (let i = 0; i < trace.x.length; i++) {
-                        const xDate = new Date(trace.x[i]).getTime();
-                        if (xDate >= minX && xDate <= maxX) {
+                        const xTs = getTs(trace.x[i]);
+                        if (xTs >= minX && xTs <= maxX) {
                             const yVal = parseFloat(trace.y[i]);
-                            if (!isNaN(yVal)) {
+                            if (!isNaN(yVal) && yVal !== null) {
                                 if (yVal < minVal) minVal = yVal;
                                 if (yVal > maxVal) maxVal = yVal;
                                 found = true;
@@ -312,13 +324,18 @@ def generate_html_report(results, output_path=None):
                     }
                 });
 
-                if (found && minVal !== Infinity) {
+                if (found && minVal !== Infinity && maxVal !== -Infinity) {
                     const range = maxVal - minVal;
-                    const margin = range === 0 ? (minVal * 0.05 || 1) : range * 0.1;
+                    // Default to 10% margin, or 5% of price if range is 0
+                    const margin = range === 0 ? Math.abs(minVal * 0.05) : range * 0.1;
+                    
                     Plotly.relayout(gd, {
                         'yaxis.range': [minVal - margin, maxVal + margin],
                         'yaxis.autorange': false
                     });
+                } else {
+                    // Fallback to auto if nothing found in window
+                    Plotly.relayout(gd, { 'yaxis.autorange': true });
                 }
             }
         </script>

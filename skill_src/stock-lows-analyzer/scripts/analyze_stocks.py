@@ -25,19 +25,21 @@ def fetch_data(symbol, period="max"):
     """Fetch historical data, metadata, and analyst targets. Updates history in cache."""
     cache_path = get_cache_path(symbol)
     cached = None
+    today_obj = datetime.date.today()
+    today_str = str(today_obj)
     
     if cache_path.exists():
         with open(cache_path, 'r') as f:
             cached = json.load(f)
 
-    # Refresh data if cache is missing or older than 24 hours
     needs_refresh = True
     if cached and 'updated_at' in cached:
-        mtime = datetime.datetime.fromisoformat(cached['updated_at'])
-        if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
-            # Check if we have all necessary metadata
-            if all(k in cached for k in ['name', 'description', 'website', 'target_history']):
-                needs_refresh = False
+        try:
+            mtime = datetime.datetime.fromisoformat(cached['updated_at'])
+            if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
+                if all(k in cached for k in ['name', 'description', 'website', 'target_history']):
+                    needs_refresh = False
+        except: pass
 
     if not needs_refresh:
         return cached
@@ -46,22 +48,22 @@ def fetch_data(symbol, period="max"):
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period)
         if hist.empty:
-            return cached # Return what we have if API fails
+            return cached
 
         info = ticker.info
         company_name = info.get('longName') or info.get('shortName') or symbol.upper()
         current_target = info.get('targetMeanPrice')
         
-        # Maintain a history of analyst targets over time
         target_history = cached.get('target_history', []) if cached else []
-        today_str = str(datetime.date.today())
         
-        # Only add to target history if target changed or is first entry for the day
         if current_target and (not target_history or target_history[-1].get('date') != today_str):
             target_history.append({
                 "date": today_str,
                 "target": float(current_target)
             })
+
+        # Safety: Filter out any future dates from target history and price history
+        target_history = [t for t in target_history if t['date'] <= today_str]
 
         data = {
             "symbol": symbol.upper(),
@@ -75,6 +77,7 @@ def fetch_data(symbol, period="max"):
             "history": [
                 {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 
                 for d, c, h, l in zip(hist.index, hist['Close'], hist['High'], hist['Low'])
+                if str(d.date()) <= today_str
             ],
             "updated_at": datetime.datetime.now().isoformat()
         }

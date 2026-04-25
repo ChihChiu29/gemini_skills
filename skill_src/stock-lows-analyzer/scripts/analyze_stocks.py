@@ -31,7 +31,7 @@ def fetch_data(symbol, period="max"):
             with open(cache_path, 'r') as f:
                 cached = json.load(f)
                 # Ensure all metadata fields are present, otherwise re-fetch
-                if all(k in cached for k in ['name', 'description', 'website']) and len(cached.get('history', [])) > 0:
+                if all(k in cached for k in ['name', 'description', 'website', 'expectation_value']) and len(cached.get('history', [])) > 0:
                     return cached
 
     try:
@@ -48,6 +48,7 @@ def fetch_data(symbol, period="max"):
             "name": company_name,
             "description": info.get('longBusinessSummary', "No description available."),
             "website": info.get('website', ""),
+            "expectation_value": info.get('targetMeanPrice'),
             "last_price": float(hist['Close'].iloc[-1]),
             "history": [
                 {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 
@@ -176,6 +177,7 @@ def calculate_lows(data, live_info=None):
         "intraday": live_info['intraday'] if live_info else [],
         "is_off_hour": live_info is not None and abs(current_price - data['last_price']) > 0.001,
         "regular_close": data['last_price'],
+        "expectation_value": data.get("expectation_value"),
         "3y": get_period_stats(3 * 365),
         "6m": get_period_stats(180),
         "3m": get_period_stats(90),
@@ -301,6 +303,7 @@ def generate_html_report(results, output_path=None):
                     <tr>
                         <th rowspan="2">Symbol</th>
                         <th rowspan="2">Price</th>
+                        <th rowspan="2">SeekingAlpha</th>
                         {"<th rowspan='2'>Option Insights</th>" if is_buy_table else ""}
                         <th colspan="4">3 Year Period</th>
                         <th colspan="4">6 Month Period</th>
@@ -337,7 +340,16 @@ def generate_html_report(results, output_path=None):
             price_display = f"${stats['current']:.2f}"
             if stats.get('is_off_hour'): price_display += f"<br><span class='off-hour-text'>LIVE (Off-Hours)</span><br><small style='color:#999'>Close: ${stats['regular_close']:.2f}</small>"
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td>{option_html}"
+            exp_val = stats.get('expectation_value')
+            exp_cls = ""
+            if exp_val:
+                ratio = exp_val / stats['current']
+                if ratio > 1.20: exp_cls = "red-cell"
+                elif ratio < 0.80: exp_cls = "green-cell"
+            
+            exp_val_display = f"${exp_val:.2f}" if exp_val else "-"
+
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td><td class='{exp_cls}'>{exp_val_display}</td>{option_html}"
             for p_key in ["3y", "6m", "3m", "7d", "1d"]:
                 p = stats[p_key]
                 if p:

@@ -1,6 +1,6 @@
 ---
 name: stock-lows-analyzer
-description: Analyzes major U.S. stocks to find those trading near historical lows (3m, 6m, 3y). Generates an interactive HTML report with price charts and a summary table highlighting buying opportunities.
+description: Analyzes major U.S. stocks and ETFs to find those trading near historical lows (3m, 6m, 3y). Generates an interactive HTML report with price charts and a summary table highlighting buying opportunities.
 ---
 
 # Stock Multi-Period Grid & Grouped Watchlist Analyzer

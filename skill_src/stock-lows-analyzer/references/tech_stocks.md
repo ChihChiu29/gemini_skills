@@ -73,3 +73,9 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - WMT (Walmart)
 - LLY (Eli Lilly)
 - UNH (UnitedHealth)
+
+## ETFs & Indices
+- VOO (Vanguard S&P 500 ETF)
+- VOOG (Vanguard S&P 500 Growth ETF)
+- QQQ (Invesco QQQ Trust)
+- QQQI (NEOS Nasdaq 100 High Income ETF)

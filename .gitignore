@@ -1,3 +1,4 @@
 ﻿.gemini/
 OUTPUT/
+CACHE/
 *.log

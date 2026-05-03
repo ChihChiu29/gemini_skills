@@ -3,6 +3,8 @@ import sys
 import json
 import datetime
 import re
+import requests
+import pandas as pd
 from pathlib import Path
 
 # Try to import yfinance, handle missing library gracefully
@@ -21,6 +23,64 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 def get_cache_path(symbol):
     return CACHE_DIR / f"{symbol.upper()}.json"
 
+def fetch_public_rating(symbol):
+    """Fetch analyst recommendation from Public.com."""
+    urls = [
+        f"https://public.com/stocks/{symbol.lower()}/forecast-price-target",
+        f"https://public.com/stocks/{symbol.lower()}"
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.31"
+    }
+    
+    for url in urls:
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code != 200:
+                continue
+            
+            pattern = r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>'
+            match = re.search(pattern, response.text)
+            if not match:
+                continue
+                
+            data = json.loads(match.group(1))
+            
+            # Try different possible paths for recommendation
+            paths = [
+                ['props', 'pageProps', 'instrumentData', 'recommendation'],
+                ['props', 'pageProps', 'instrumentData', 'instrumentCompanyDetails', 'recommendation'],
+                ['props', 'pageProps', 'initialState', 'asset', 'assetInfo', 'recommendation']
+            ]
+            
+            rec = None
+            for path in paths:
+                curr = data
+                try:
+                    for key in path:
+                        curr = curr[key]
+                    rec = curr
+                    if rec: break
+                except (KeyError, TypeError):
+                    continue
+                    
+            if rec:
+                rating_num = rec.get('currentConsensusRating')
+                if rating_num is not None:
+                    try:
+                        num = float(rating_num)
+                        if num <= 1.5: return "Strong Buy"
+                        if num <= 2.5: return "Buy"
+                        if num <= 3.5: return "Hold"
+                        if num <= 4.5: return "Sell"
+                        return "Strong Sell"
+                    except (ValueError, TypeError):
+                        pass
+        except Exception as e:
+            print(f"Error fetching Public rating for {symbol} at {url}: {e}")
+            
+    return None
+
 def fetch_data(symbol, period="max"):
     """Fetch historical data and update cache."""
     cache_path = get_cache_path(symbol)
@@ -28,10 +88,10 @@ def fetch_data(symbol, period="max"):
     if cache_path.exists():
         mtime = datetime.datetime.fromtimestamp(cache_path.stat().st_mtime)
         if datetime.datetime.now() - mtime < datetime.timedelta(hours=24):
-            with open(cache_path, 'r') as f:
+            with open(cache_path, 'r', encoding='utf-8') as f:
                 cached = json.load(f)
                 # Ensure all metadata fields are present, otherwise re-fetch
-                if all(k in cached for k in ['name', 'description', 'website', 'expectation_value']) and len(cached.get('history', [])) > 0:
+                if all(k in cached for k in ['name', 'description', 'website', 'expectation_value', 'public_rating']) and len(cached.get('history', [])) > 0:
                     return cached
 
     try:
@@ -43,12 +103,15 @@ def fetch_data(symbol, period="max"):
         info = ticker.info
         company_name = info.get('longName') or info.get('shortName') or symbol.upper()
         
+        public_rating = fetch_public_rating(symbol)
+        
         data = {
             "symbol": symbol.upper(),
             "name": company_name,
             "description": info.get('longBusinessSummary', "No description available."),
             "website": info.get('website', ""),
             "expectation_value": info.get('targetMeanPrice'),
+            "public_rating": public_rating,
             "last_price": float(hist['Close'].iloc[-1]),
             "history": [
                 {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 
@@ -57,7 +120,7 @@ def fetch_data(symbol, period="max"):
             "updated_at": str(datetime.datetime.now())
         }
         
-        with open(cache_path, 'w') as f:
+        with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump(data, f)
         return data
     except Exception as e:
@@ -109,8 +172,15 @@ def fetch_live_info(symbols):
                 except: continue
         else:
             sym = symbols[0].upper()
-            res = process_series(data['Close'].dropna(), data['High'], data['Low'])
-            if res: live_info[sym] = res
+            try:
+                # yf.download returns a MultiIndex even for single symbol if symbols is a list
+                if isinstance(data.columns, pd.MultiIndex):
+                    res = process_series(data['Close'][sym].dropna(), data['High'][sym], data['Low'][sym])
+                else:
+                    res = process_series(data['Close'].dropna(), data['High'], data['Low'])
+                if res: live_info[sym] = res
+            except Exception as e:
+                print(f"Error processing single symbol {sym}: {e}")
             
         return live_info
     except Exception as e:
@@ -211,7 +281,12 @@ def generate_html_report(results, output_path=None):
         is_lt_buy = lt_hits >= 2
         is_st_buy_7d = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
         is_st_buy_3m = stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0
-        is_buy = is_lt_buy or is_st_buy_7d or is_st_buy_3m
+        
+        # Public.com Strong Buy logic
+        pub_rating = stats['data'].get('public_rating')
+        is_pub_strong_buy = pub_rating == "Strong Buy"
+        
+        is_buy = is_lt_buy or is_st_buy_7d or is_st_buy_3m or is_pub_strong_buy
         
         is_sell = False
         is_watch = False
@@ -303,7 +378,8 @@ def generate_html_report(results, output_path=None):
                     <tr>
                         <th rowspan="2">Symbol</th>
                         <th rowspan="2">Price</th>
-                        <th rowspan="2">SeekingAlpha</th>
+                        <th rowspan="2">Price Target (SA)</th>
+                        <th rowspan="2">Public.com</th>
                         {"<th rowspan='2'>Option Insights</th>" if is_buy_table else ""}
                         <th colspan="4">3 Year Period</th>
                         <th colspan="4">6 Month Period</th>
@@ -329,6 +405,7 @@ def generate_html_report(results, output_path=None):
             if lt_hits >= 2: reasons.append('<span class="buy-text">BUY (Long Term)</span>: Multi-period low')
             if stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0: reasons.append('<span class="buy-text">BUY (Short Term)</span>: 7D Low + Vol')
             if stats['3m'] and stats['3m']['vol'] > 50.0 and stats['3m']['pos_pct'] < 20.0: reasons.append('<span class="buy-text">BUY (Short Term)</span>: 3M Vol Bottom')
+            if stats['data'].get('public_rating') == "Strong Buy": reasons.append('<span class="buy-text">BUY</span>: Public.com Strong Buy')
 
             option_html = ""
             if is_buy_table:
@@ -348,8 +425,18 @@ def generate_html_report(results, output_path=None):
                 elif ratio < 0.80: exp_cls = "green-cell"
             
             exp_val_display = f"${exp_val:.2f}" if exp_val else "-"
+            
+            # Public.com Rating
+            pub_rating = stats['data'].get('public_rating')
+            pub_cls = ""
+            if pub_rating:
+                if "Buy" in pub_rating: pub_cls = "red-cell"
+                elif "Sell" in pub_rating: pub_cls = "green-cell"
+                elif "Hold" in pub_rating: pub_cls = "orange-cell"
+            
+            pub_display = pub_rating if pub_rating else "-"
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td><td class='{exp_cls}'>{exp_val_display}</td>{option_html}"
+            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td><td class='{exp_cls}'>{exp_val_display}</td><td class='{pub_cls}'>{pub_display}</td>{option_html}"
             for p_key in ["3y", "6m", "3m", "7d", "1d"]:
                 p = stats[p_key]
                 if p:
@@ -482,7 +569,8 @@ def main():
             if res['6m'] and res['6m']['pos_pct'] < 15: lt_hits += 1
             if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
             is_st_buy = (res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0) or (res['3m'] and res['3m']['vol'] > 50.0 and res['3m']['pos_pct'] < 20.0)
-            if lt_hits >= 2 or is_st_buy:
+            is_pub_strong_buy = data.get('public_rating') == "Strong Buy"
+            if lt_hits >= 2 or is_st_buy or is_pub_strong_buy:
                 print(f"  > Fetching options for {sym}...")
                 res['option_data'] = fetch_option_premium(sym, res['current'])
             else: res['option_data'] = None

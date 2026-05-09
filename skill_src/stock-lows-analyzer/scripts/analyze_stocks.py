@@ -326,9 +326,9 @@ def generate_html_report(results, output_path=None):
             .col-price { width: 85px; }
             .col-target { width: 75px; }
             .col-public { width: 85px; }
-            .col-option { width: 220px; text-align: left !important; }
+            .col-option { width: 160px; text-align: left !important; }
             .col-stat { width: 52px; font-size: 0.95em; }
-            .col-reason { width: auto; min-width: 150px; text-align: left !important; }
+            .col-reason { width: 220px; text-align: left !important; }
 
             .red-cell { background-color: #ffcccc; color: #cc0000; font-weight: bold; }
             .green-cell { background-color: #ccffcc; color: #006600; font-weight: bold; }

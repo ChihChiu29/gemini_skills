@@ -313,18 +313,28 @@ def generate_html_report(results, output_path=None):
         <title>Stock Multi-Period Analysis</title>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1700px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1750px; margin: 0 auto; padding: 10px; background-color: #f4f7f6; }
             h1, h2 { color: #2c3e50; }
-            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 20px; overflow-x: auto; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.8em; }
-            th, td { padding: 8px 10px; text-align: right; border: 1px solid #eee; }
-            th { background-color: #34495e; color: white; text-align: center; }
+            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 15px; overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.78em; table-layout: fixed; }
+            th, td { padding: 4px 2px; text-align: right; border: 1px solid #eee; word-wrap: break-word; overflow: hidden; }
+            th { background-color: #34495e; color: white; text-align: center; padding: 6px 2px; }
             tbody td:first-child { text-align: left; font-weight: bold; background-color: #f9f9f9; }
+            
+            /* Column Widths */
+            .col-sym { width: 75px; }
+            .col-price { width: 85px; }
+            .col-target { width: 75px; }
+            .col-public { width: 85px; }
+            .col-option { width: 220px; text-align: left !important; }
+            .col-stat { width: 52px; font-size: 0.95em; }
+            .col-reason { width: auto; min-width: 150px; text-align: left !important; }
+
             .red-cell { background-color: #ffcccc; color: #cc0000; font-weight: bold; }
             .green-cell { background-color: #ccffcc; color: #006600; font-weight: bold; }
             .orange-cell { background-color: #ffe5cc; color: #e67e22; font-weight: bold; }
             .off-hour-text { color: #8e44ad; font-weight: bold; font-size: 0.85em; }
-            .watch-reason { font-size: 0.85em; list-style-type: none; padding: 0; margin: 0; }
+            .watch-reason { font-size: 0.88em; list-style-type: none; padding: 0; margin: 0; text-align: left; }
             .group-header { background-color: #2c3e50; color: white; padding: 10px; margin-top: 40px; border-radius: 8px 8px 0 0; }
             .buy-header { background-color: #e74c3c; }
             .sell-header { background-color: #27ae60; }
@@ -376,24 +386,24 @@ def generate_html_report(results, output_path=None):
             <table>
                 <thead>
                     <tr>
-                        <th rowspan="2">Symbol</th>
-                        <th rowspan="2">Price</th>
-                        <th rowspan="2">Price Target (SA)</th>
-                        <th rowspan="2">Public.com</th>
-                        {"<th rowspan='2'>Option Insights</th>" if is_buy_table else ""}
+                        <th rowspan="2" class="col-sym">Symbol</th>
+                        <th rowspan="2" class="col-price">Price</th>
+                        <th rowspan="2" class="col-target">Price Target (SA)</th>
+                        <th rowspan="2" class="col-public">Public.com</th>
+                        {"<th rowspan='2' class='col-option'>Option Insights</th>" if is_buy_table else ""}
                         <th colspan="4">3 Year Period</th>
                         <th colspan="4">6 Month Period</th>
                         <th colspan="4">3 Month Period</th>
                         <th colspan="4">7 Day Period</th>
                         <th colspan="4">1 Day Period</th>
-                        <th rowspan="2">Watch Reasons</th>
+                        <th rowspan="2" class="col-reason">Watch Reasons</th>
                     </tr>
                     <tr>
-                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
-                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
-                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
-                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
-                        <th>High</th><th>Low</th><th>Vol</th><th>Pos%</th>
+                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
+                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
+                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
+                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
+                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -411,8 +421,8 @@ def generate_html_report(results, output_path=None):
             if is_buy_table:
                 if stats.get('option_data'):
                     opt = stats['option_data']
-                    option_html = f"<td><div style='font-size: 0.9em; text-align: left;'><strong>Ceiling: ${stats['current']+opt['premium']:.2f}</strong><br><span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br><span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br><small>Exp: {opt['expiry']}</small></div></td>"
-                else: option_html = "<td>-</td>"
+                    option_html = f"<td class='col-option'><div style='font-size: 0.9em; text-align: left;'><strong>Ceiling: ${stats['current']+opt['premium']:.2f}</strong><br><span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br><span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br><small>Exp: {opt['expiry']}</small></div></td>"
+                else: option_html = "<td class='col-option'>-</td>"
 
             price_display = f"${stats['current']:.2f}"
             if stats.get('is_off_hour'): price_display += f"<br><span class='off-hour-text'>LIVE (Off-Hours)</span><br><small style='color:#999'>Close: ${stats['regular_close']:.2f}</small>"
@@ -436,7 +446,7 @@ def generate_html_report(results, output_path=None):
             
             pub_display = pub_rating if pub_rating else "-"
 
-            row_html = f"<tr><td><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td>{price_display}</td><td class='{exp_cls}'>{exp_val_display}</td><td class='{pub_cls}'>{pub_display}</td>{option_html}"
+            row_html = f"<tr><td class='col-sym'><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td class='col-price'>{price_display}</td><td class='col-target {exp_cls}'>{exp_val_display}</td><td class='col-public {pub_cls}'>{pub_display}</td>{option_html}"
             for p_key in ["3y", "6m", "3m", "7d", "1d"]:
                 p = stats[p_key]
                 if p:
@@ -445,12 +455,12 @@ def generate_html_report(results, output_path=None):
                     elif p['pos_pct'] > thresholds[p_key]["high"]: reasons.append(f'<span class="sell-text">SELL</span>: {p_key.upper()} High')
                     vol_cls = "orange-cell" if ((p_key == "3m" and p['vol'] > 50) or (p_key == "7d" and p['vol'] > 20)) else ""
                     if vol_cls: reasons.append(f'<span class="watch-text">WATCH</span>: {p_key.upper()} Vol')
-                    row_html += f"<td>${p['high']:.2f}</td><td>${p['low']:.2f}</td><td class='{vol_cls}'>{p['vol']:.1f}%</td><td class='{pos_cls}'>{p['pos_pct']:.1f}%</td>"
-                else: row_html += "<td>-</td><td>-</td><td>-</td><td>-</td>"
+                    row_html += f"<td class='col-stat'>${p['high']:.2f}</td><td class='col-stat'>${p['low']:.2f}</td><td class='col-stat {vol_cls}'>{p['vol']:.1f}%</td><td class='col-stat {pos_cls}'>{p['pos_pct']:.1f}%</td>"
+                else: row_html += "<td class='col-stat'>-</td><td class='col-stat'>-</td><td class='col-stat'>-</td><td class='col-stat'>-</td>"
             
             seen_lt_st = any("BUY (" in r for r in reasons)
             unique_reasons = [r for r in list(dict.fromkeys(reasons)) if not ("BUY" in r and "BUY (" not in r and seen_lt_st)]
-            row_html += f'<td><ul class="watch-reason">{"".join([f"<li>{r}</li>" for r in unique_reasons])}</ul></td></tr>'
+            row_html += f'<td class="col-reason"><ul class="watch-reason">{"".join([f"<li>{r}</li>" for r in unique_reasons])}</ul></td></tr>'
             table_html += row_html
         return table_html + "</tbody></table></div>"
 

@@ -40,6 +40,7 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - DDOG (Datadog)
 - MDB (MongoDB)
 - ZS (Zscaler)
+- AKAM (Akamai Technologies)
 
 ## Internet, E-commerce & Social Media
 - AMZN (Amazon)

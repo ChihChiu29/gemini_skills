@@ -1,4 +1,8 @@
-﻿.gemini/
+.jetski/
+.antigravity/
+.agents/
+.agent/
+.antigravitycli/
 OUTPUT/
 CACHE/
 *.log

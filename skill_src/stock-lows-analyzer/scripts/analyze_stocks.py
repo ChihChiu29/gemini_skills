@@ -6,6 +6,8 @@ import re
 import requests
 import pandas as pd
 from pathlib import Path
+import time
+from filelock import FileLock
 
 # Try to import yfinance, handle missing library gracefully
 try:
@@ -14,10 +16,12 @@ except ImportError:
     print("Error: 'yfinance' library not found. Please install it using 'pip install yfinance'.")
     sys.exit(1)
 
-CACHE_DIR = Path("CACHE/stock_cache")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+CACHE_DIR = PROJECT_ROOT / "CACHE" / "stock_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-OUTPUT_DIR = Path("OUTPUT")
+OUTPUT_DIR = PROJECT_ROOT / "OUTPUT"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_cache_path(symbol):
@@ -558,34 +562,50 @@ def generate_html_report(results, output_path=None):
 
 def main():
     if len(sys.argv) < 2:
-        ref_path = Path(__file__).parent.parent / "references" / "tech_stocks.md"
-        if ref_path.exists():
-            print(f"Reading symbols from {ref_path}...")
-            with open(ref_path, 'r') as f:
-                content = f.read()
-                symbols = list(dict.fromkeys(re.findall(r'- ([A-Z]+)', content)))
-        else: sys.exit(1)
-    else: symbols = sys.argv[1:]
+        ref_dir = Path(__file__).parent.parent / "references"
+        tech_path = ref_dir / "tech_stocks.md"
+        nontech_path = ref_dir / "nontech_stocks.md"
+        symbols = []
+        for p in [tech_path, nontech_path]:
+            if p.exists():
+                with open(p, "r") as f:
+                    content = f.read()
+                    symbols.extend(re.findall(r'- ([A-Z]+)', content))
+        # Deduplicate while preserving order
+        symbols = list(dict.fromkeys(symbols))
+    else:
+        symbols = sys.argv[1:]
 
     live_info = fetch_live_info(symbols)
     results = []
-    for sym in symbols:
+    BATCH_SIZE = 50
+    BATCH_DELAY = 2  # seconds
+    for i, sym in enumerate(symbols):
+        if i != 0 and i % BATCH_SIZE == 0:
+            batch_num = i // BATCH_SIZE
+            print(f"Batch {batch_num} completed, sleeping {BATCH_DELAY}s...")
+            time.sleep(BATCH_DELAY)
         print(f"Analyzing {sym}...")
         data = fetch_data(sym)
         if data:
             res = calculate_lows(data, live_info=live_info.get(sym.upper()))
             lt_hits = 0
-            if res['3y'] and res['3y']['pos_pct'] < 15: lt_hits += 1
-            if res['6m'] and res['6m']['pos_pct'] < 15: lt_hits += 1
-            if res['3m'] and res['3m']['pos_pct'] < 20: lt_hits += 1
+            if res['3y'] and res['3y']['pos_pct'] < 15:
+                lt_hits += 1
+            if res['6m'] and res['6m']['pos_pct'] < 15:
+                lt_hits += 1
+            if res['3m'] and res['3m']['pos_pct'] < 20:
+                lt_hits += 1
             is_st_buy = (res['7d'] and res['7d']['pos_pct'] < 25 and res['7d']['vol'] >= 10.0) or (res['3m'] and res['3m']['vol'] > 50.0 and res['3m']['pos_pct'] < 20.0)
             is_pub_strong_buy = data.get('public_rating') == "Strong Buy"
             if lt_hits >= 2 or is_st_buy or is_pub_strong_buy:
                 print(f"  > Fetching options for {sym}...")
                 res['option_data'] = fetch_option_premium(sym, res['current'])
-            else: res['option_data'] = None
+            else:
+                res['option_data'] = None
             results.append(res)
-    if results: generate_html_report(results)
+    if results:
+        generate_html_report(results)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
-# Chih's Gemini CLI Skills
+# Chih's Antigravity CLI Skills
 
-A collection of specialized expert skills for the Gemini CLI.
+A collection of specialized expert skills for the Antigravity CLI.
 
 ## Workspace Structure
 
@@ -20,19 +20,28 @@ Analyzes major U.S. stocks to find those trading near historical lows or experie
 
 ## Installation Instructions
 
-### Option 1: Fast Installation (Recommended)
-To install all available skills from the latest releases, run the following command in your terminal from the project root:
+### Option 1: Automated Developer Setup (Recommended for Windows)
+If you are developing locally, you can use the provided PowerShell helper to automatically clean up any old directories and link all skills to both modern Antigravity and legacy environments:
 
 ```powershell
-gemini skills install RELEASE/*.skill --scope workspace
+.\link_skills.ps1
 ```
 
-### Option 2: Development / Linking
-If you want to stay up-to-date with changes in the source code or contribute to development, link the skill instead:
+### Option 2: Fast Installation from Release Package
+To install all available skills from pre-packaged release files, run the following command in your terminal:
 
 ```powershell
-gemini skills link skill_src/stock-lows-analyzer --scope workspace
+antigravity skills install RELEASE/*.skill --scope workspace
 ```
+*(For legacy environments, `jetski skills install RELEASE/*.skill --scope workspace` is also supported.)*
+
+### Option 3: Manual Development / Linking
+To manually link the stock analyzer skill to your workspace, run:
+
+```powershell
+antigravity skills link skill_src/stock-lows-analyzer --scope workspace
+```
+*(For legacy environments, use `jetski skills link skill_src/stock-lows-analyzer --scope workspace`.)*
 
 ## Requirements
 Most scripts in this repository require Python. The Stock Analyzer specifically requires `yfinance`:

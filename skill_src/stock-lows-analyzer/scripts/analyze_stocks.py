@@ -43,7 +43,7 @@ def fetch_public_rating(symbol):
             if response.status_code != 200:
                 continue
             
-            pattern = r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>'
+            pattern = r'<script id="__NEXT_DATA__" type="application/json"[^>]*>(.*?)</script>'
             match = re.search(pattern, response.text)
             if not match:
                 continue
@@ -565,8 +565,9 @@ def main():
         ref_dir = Path(__file__).parent.parent / "references"
         tech_path = ref_dir / "tech_stocks.md"
         nontech_path = ref_dir / "nontech_stocks.md"
+        manual_path = ref_dir / "manual_stocks.md"
         symbols = []
-        for p in [tech_path, nontech_path]:
+        for p in [tech_path, nontech_path, manual_path]:
             if p.exists():
                 with open(p, "r") as f:
                     content = f.read()

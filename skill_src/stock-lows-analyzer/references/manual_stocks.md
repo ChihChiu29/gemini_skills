@@ -1,0 +1,39 @@
+- ADBE (Adobe)
+- ADSK (Autodesk)
+- AKAM
+- AMZN
+- AAPL
+- BIDU
+- BSX
+- CPNG
+- CRM
+- CRWD
+- DELL
+- CART
+- INTC
+
+- MCD
+- META 
+- MSFT
+- NDAQ
+- NFLX
+- NOW
+- NVDA
+
+- PINS
+- QQQ
+- QQQI
+- RDDT
+- SBUX
+- SNOW
+- SPCX
+- SPOT
+- T
+- TSM
+- TSLA
+
+- UBER
+- VOO
+- VOOG
+- WMT
+- WDAY

@@ -3,6 +3,6 @@
 .agents/
 .agent/
 .antigravitycli/
-OUTPUT/
+
 CACHE/
 *.log

@@ -25,6 +25,7 @@
 - QQQI
 - RDDT
 - SBUX
+- SNDK (SanDisk Corp)
 - SNOW
 - SPCX
 - SPOT

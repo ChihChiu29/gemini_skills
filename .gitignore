@@ -6,3 +6,4 @@
 
 CACHE/
 *.log
+__pycache__

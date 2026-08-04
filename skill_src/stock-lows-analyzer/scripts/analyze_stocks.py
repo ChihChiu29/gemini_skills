@@ -114,11 +114,11 @@ def fetch_data(symbol, period="max"):
             "name": company_name,
             "description": info.get('longBusinessSummary', "No description available."),
             "website": info.get('website', ""),
-            "expectation_value": info.get('targetMeanPrice'),
+            "expectation_value": round(float(info['targetMeanPrice']), 2) if info.get('targetMeanPrice') else None,
             "public_rating": public_rating,
-            "last_price": float(hist['Close'].iloc[-1]),
+            "last_price": round(float(hist['Close'].iloc[-1]), 2),
             "history": [
-                {"date": str(d.date()), "close": float(c), "high": float(h), "low": float(l)} 
+                {"date": str(d.date()), "close": round(float(c), 2), "high": round(float(h), 2), "low": round(float(l), 2)} 
                 for d, c, h, l in zip(hist.index, hist['Close'], hist['High'], hist['Low'])
             ],
             "updated_at": str(datetime.datetime.now())
@@ -146,7 +146,7 @@ def fetch_live_info(symbols):
         
         def process_series(close_series, high_series, low_series):
             if close_series.empty: return None
-            price = float(close_series.iloc[-1])
+            price = round(float(close_series.iloc[-1]), 2)
             intraday = []
             for t, p in close_series.items():
                 is_reg = False
@@ -158,13 +158,13 @@ def fetch_live_info(symbols):
                 except:
                     pass
                 
-                intraday.append({"time": str(t), "price": float(p), "is_regular": is_reg})
+                intraday.append({"time": str(t), "price": round(float(p), 2), "is_regular": is_reg})
                 
             return {
                 "price": price,
                 "intraday": intraday,
-                "high": float(high_series.max()),
-                "low": float(low_series.min())
+                "high": round(float(high_series.max()), 2),
+                "low": round(float(low_series.min()), 2)
             }
 
         if len(symbols) > 1:
@@ -210,8 +210,8 @@ def fetch_option_premium(symbol, current_price):
         atm_call = calls.sort_values('diff').iloc[0]
         
         return {
-            "premium": float(atm_call['lastPrice']),
-            "strike": float(atm_call['strike']),
+            "premium": round(float(atm_call['lastPrice']), 2),
+            "strike": round(float(atm_call['strike']), 2),
             "expiry": best_expiry
         }
     except Exception as e:
@@ -234,15 +234,17 @@ def calculate_lows(data, live_info=None):
         
         vol = (p_high / p_low - 1) * 100 if p_low > 0 else 0
         pos_pct = (current_price - p_low) / (p_high - p_low) * 100 if p_high > p_low else 0
+        max_cur_pct = (p_high / current_price - 1) * 100 if current_price > 0 else 0.0
         
-        return {"high": p_high, "low": p_low, "vol": vol, "pos_pct": pos_pct}
+        return {"high": p_high, "low": p_low, "vol": vol, "pos_pct": pos_pct, "max_cur_pct": max_cur_pct}
 
     period_1d = None
     if live_info:
         p_high, p_low = live_info['high'], live_info['low']
         vol = (p_high / p_low - 1) * 100 if p_low > 0 else 0
         pos_pct = (current_price - p_low) / (p_high - p_low) * 100 if p_high > p_low else 0
-        period_1d = {"high": p_high, "low": p_low, "vol": vol, "pos_pct": pos_pct}
+        max_cur_pct = (p_high / current_price - 1) * 100 if current_price > 0 else 0.0
+        period_1d = {"high": p_high, "low": p_low, "vol": vol, "pos_pct": pos_pct, "max_cur_pct": max_cur_pct}
 
     return {
         "symbol": data["symbol"],
@@ -319,10 +321,21 @@ def generate_html_report(results, output_path=None):
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1750px; margin: 0 auto; padding: 10px; background-color: #f4f7f6; }
             h1, h2 { color: #2c3e50; }
-            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 15px; overflow-x: auto; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; font-size: 0.78em; table-layout: fixed; }
-            th, td { padding: 4px 2px; text-align: right; border: 1px solid #eee; word-wrap: break-word; overflow: hidden; }
-            th { background-color: #34495e; color: white; text-align: center; padding: 6px 2px; }
+            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 15px; overflow-x: auto; max-height: 78vh; overflow-y: auto; }
+            table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px; background: white; border-radius: 8px; font-size: 0.78em; table-layout: fixed; }
+            th, td { padding: 4px 2px; text-align: right; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; word-wrap: break-word; overflow: hidden; }
+            
+            /* Sticky Header */
+            thead th { position: sticky; z-index: 5; background-color: #34495e; color: white; text-align: center; padding: 6px 2px; }
+            thead tr:nth-child(1) th { top: 0; border-bottom: 2px solid #1a252f; }
+            thead tr:nth-child(2) th { top: 29px; border-bottom: 2px solid #1a252f; }
+            tbody td:first-child, thead th:first-child { border-left: 1px solid #e2e8f0; }
+
+            /* Period Separators and Shading */
+            .period-sep { border-left: 2.5px solid #2c3e50 !important; }
+            .period-alt { background-color: #f8fafc; }
+            .period-hdr { border-left: 2.5px solid #1a252f !important; }
+
             tbody td:first-child { text-align: left; font-weight: bold; background-color: #f9f9f9; }
             
             /* Column Widths */
@@ -330,7 +343,7 @@ def generate_html_report(results, output_path=None):
             .col-price { width: 85px; }
             .col-target { width: 75px; }
             .col-public { width: 85px; }
-            .col-option { width: 160px; text-align: left !important; }
+            .col-option { width: 105px; text-align: left !important; }
             .col-stat { width: 52px; font-size: 0.95em; }
             .col-reason { width: 220px; text-align: left !important; }
 
@@ -395,19 +408,19 @@ def generate_html_report(results, output_path=None):
                         <th rowspan="2" class="col-target">Price Target (SA)</th>
                         <th rowspan="2" class="col-public">Public.com</th>
                         {"<th rowspan='2' class='col-option'>Option Insights</th>" if is_buy_table else ""}
-                        <th colspan="4">3 Year Period</th>
-                        <th colspan="4">6 Month Period</th>
-                        <th colspan="4">3 Month Period</th>
-                        <th colspan="4">7 Day Period</th>
-                        <th colspan="4">1 Day Period</th>
-                        <th rowspan="2" class="col-reason">Watch Reasons</th>
+                        <th colspan="5" class="period-hdr">3 Year Period</th>
+                        <th colspan="5" class="period-hdr period-alt">6 Month Period</th>
+                        <th colspan="5" class="period-hdr">3 Month Period</th>
+                        <th colspan="5" class="period-hdr period-alt">7 Day Period</th>
+                        <th colspan="5" class="period-hdr">1 Day Period</th>
+                        <th rowspan="2" class="col-reason period-sep">Watch Reasons</th>
                     </tr>
                     <tr>
-                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
-                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
-                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
-                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
-                        <th class="col-stat">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th>
+                        <th class="col-stat period-sep">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th><th class="col-stat">Gain%</th>
+                        <th class="col-stat period-sep period-alt">High</th><th class="col-stat period-alt">Low</th><th class="col-stat period-alt">Vol</th><th class="col-stat period-alt">Pos%</th><th class="col-stat period-alt">Gain%</th>
+                        <th class="col-stat period-sep">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th><th class="col-stat">Gain%</th>
+                        <th class="col-stat period-sep period-alt">High</th><th class="col-stat period-alt">Low</th><th class="col-stat period-alt">Vol</th><th class="col-stat period-alt">Pos%</th><th class="col-stat period-alt">Gain%</th>
+                        <th class="col-stat period-sep">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th><th class="col-stat">Gain%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -425,7 +438,7 @@ def generate_html_report(results, output_path=None):
             if is_buy_table:
                 if stats.get('option_data'):
                     opt = stats['option_data']
-                    option_html = f"<td class='col-option'><div style='font-size: 0.9em; text-align: left;'><strong>Ceiling: ${stats['current']+opt['premium']:.2f}</strong><br><span style='color: #666;'>Strike: ${opt['strike']:.2f}</span><br><span style='color: #666;'>Cost: ${opt['premium']:.2f}/sh</span><br><small>Exp: {opt['expiry']}</small></div></td>"
+                    option_html = f"<td class='col-option'><div style='font-size: 0.85em; text-align: left;'><strong>Ceil: ${stats['current']+opt['premium']:.2f}</strong><br><span style='color: #666;'>Strk: ${opt['strike']:.2f}</span><br><span style='color: #666;'>Cost: ${opt['premium']:.2f}</span><br><small>Exp: {opt['expiry']}</small></div></td>"
                 else: option_html = "<td class='col-option'>-</td>"
 
             price_display = f"${stats['current']:.2f}"
@@ -435,8 +448,8 @@ def generate_html_report(results, output_path=None):
             exp_cls = ""
             if exp_val:
                 ratio = exp_val / stats['current']
-                if ratio > 1.20: exp_cls = "red-cell"
-                elif ratio < 0.80: exp_cls = "green-cell"
+                if ratio > 1.20: exp_cls = " red-cell"
+                elif ratio < 0.80: exp_cls = " green-cell"
             
             exp_val_display = f"${exp_val:.2f}" if exp_val else "-"
             
@@ -444,27 +457,30 @@ def generate_html_report(results, output_path=None):
             pub_rating = stats['data'].get('public_rating')
             pub_cls = ""
             if pub_rating:
-                if "Buy" in pub_rating: pub_cls = "red-cell"
-                elif "Sell" in pub_rating: pub_cls = "green-cell"
-                elif "Hold" in pub_rating: pub_cls = "orange-cell"
+                if "Buy" in pub_rating: pub_cls = " red-cell"
+                elif "Sell" in pub_rating: pub_cls = " green-cell"
+                elif "Hold" in pub_rating: pub_cls = " orange-cell"
             
             pub_display = pub_rating if pub_rating else "-"
 
-            row_html = f"<tr><td class='col-sym'><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td class='col-price'>{price_display}</td><td class='col-target {exp_cls}'>{exp_val_display}</td><td class='col-public {pub_cls}'>{pub_display}</td>{option_html}"
-            for p_key in ["3y", "6m", "3m", "7d", "1d"]:
+            row_html = f"<tr><td class='col-sym'><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td class='col-price'>{price_display}</td><td class='col-target{exp_cls}'>{exp_val_display}</td><td class='col-public{pub_cls}'>{pub_display}</td>{option_html}"
+            for p_idx, p_key in enumerate(["3y", "6m", "3m", "7d", "1d"]):
                 p = stats[p_key]
+                alt = " period-alt" if p_idx % 2 == 1 else ""
+                sep = " period-sep"
                 if p:
-                    pos_cls = "red-cell" if p['pos_pct'] < thresholds[p_key]["low"] else ("green-cell" if p['pos_pct'] > thresholds[p_key]["high"] else "")
+                    pos_cls = " red-cell" if p['pos_pct'] < thresholds[p_key]["low"] else (" green-cell" if p['pos_pct'] > thresholds[p_key]["high"] else "")
                     if p['pos_pct'] < thresholds[p_key]["low"] and not any("BUY" in r for r in reasons): reasons.append(f'<span class="buy-text">BUY</span>: {p_key.upper()} Low')
                     elif p['pos_pct'] > thresholds[p_key]["high"]: reasons.append(f'<span class="sell-text">SELL</span>: {p_key.upper()} High')
-                    vol_cls = "orange-cell" if ((p_key == "3m" and p['vol'] > 50) or (p_key == "7d" and p['vol'] > 20)) else ""
+                    vol_cls = " orange-cell" if ((p_key == "3m" and p['vol'] > 50) or (p_key == "7d" and p['vol'] > 20)) else ""
                     if vol_cls: reasons.append(f'<span class="watch-text">WATCH</span>: {p_key.upper()} Vol')
-                    row_html += f"<td class='col-stat'>${p['high']:.2f}</td><td class='col-stat'>${p['low']:.2f}</td><td class='col-stat {vol_cls}'>{p['vol']:.1f}%</td><td class='col-stat {pos_cls}'>{p['pos_pct']:.1f}%</td>"
-                else: row_html += "<td class='col-stat'>-</td><td class='col-stat'>-</td><td class='col-stat'>-</td><td class='col-stat'>-</td>"
+                    max_cls = " red-cell" if p['max_cur_pct'] > 20.0 else ""
+                    row_html += f"<td class='col-stat{sep}{alt}'>${p['high']:.2f}</td><td class='col-stat{alt}'>${p['low']:.2f}</td><td class='col-stat{vol_cls}{alt}'>{p['vol']:.1f}%</td><td class='col-stat{pos_cls}{alt}'>{p['pos_pct']:.1f}%</td><td class='col-stat{max_cls}{alt}'>+{p['max_cur_pct']:.1f}%</td>"
+                else: row_html += f"<td class='col-stat{sep}{alt}'>-</td><td class='col-stat{alt}'>-</td><td class='col-stat{alt}'>-</td><td class='col-stat{alt}'>-</td><td class='col-stat{alt}'>-</td>"
             
             seen_lt_st = any("BUY (" in r for r in reasons)
             unique_reasons = [r for r in list(dict.fromkeys(reasons)) if not ("BUY" in r and "BUY (" not in r and seen_lt_st)]
-            row_html += f'<td class="col-reason"><ul class="watch-reason">{"".join([f"<li>{r}</li>" for r in unique_reasons])}</ul></td></tr>'
+            row_html += f'<td class="col-reason period-sep"><ul class="watch-reason">{"".join([f"<li>{r}</li>" for r in unique_reasons])}</ul></td></tr>'
             table_html += row_html
         return table_html + "</tbody></table></div>"
 
@@ -484,7 +500,7 @@ def generate_html_report(results, output_path=None):
             p = item.get(p_key)
             if p:
                 color = "#cc0000" if p['pos_pct'] < thresholds[p_key]["low"] else ("#006600" if p['pos_pct'] > thresholds[p_key]["high"] else "#333")
-                summary_parts.append(f"<span style='color:{color}; font-weight:bold;'>{p_key.upper()}: {p['pos_pct']:.1f}%</span>")
+                summary_parts.append(f"<span style='color:{color}; font-weight:bold;'>{p_key.upper()}: {p['pos_pct']:.1f}% (Gain: +{p['max_cur_pct']:.1f}%)</span>")
         opt_info = f" | <span class='buy-text'>Ceiling: ${item['current']+item['option_data']['premium']:.2f}</span> (Strike: ${item['option_data']['strike']:.2f})" if item.get('option_data') else ""
         summary_html = f"<div style='margin-bottom: 15px; font-size: 0.95em; border-bottom: 1px solid #eee; padding-bottom: 10px;'>" \
                       f"<strong>Current: ${item['current']:.2f}</strong> | {' / '.join(summary_parts)}{opt_info}</div>"
@@ -506,7 +522,7 @@ def generate_html_report(results, output_path=None):
 
         stock_details_html += f"<div id='chart-{sym}' class='stock-card'>{header_html}<div class='charts-row'><div class='chart-box'><h3>Full History</h3><div id='plot-max-{sym}' class='chart-container'></div></div><div class='chart-box'><h3>Intraday (1D incl. Off-Hours)</h3><div id='plot-1d-{sym}' class='chart-container'></div></div></div></div>"
 
-        dates_max, prices_max = [h['date'] for h in comp_info['history']], [h['close'] for h in comp_info['history']]
+        dates_max, prices_max = [h['date'] for h in comp_info['history']], [round(h['close'], 2) for h in comp_info['history']]
         charts_js += f"""
         var plotMax_{sym} = document.getElementById('plot-max-{sym}');
         Plotly.newPlot(plotMax_{sym}, [{{ x: {json.dumps(dates_max)}, y: {json.dumps(prices_max)}, type: 'scatter', mode: 'lines', name: '{sym} Hist', line: {{color: '#3498db'}} }}], {{

@@ -255,6 +255,7 @@ def calculate_lows(data, live_info=None):
         "regular_close": data['last_price'],
         "expectation_value": data.get("expectation_value"),
         "3y": get_period_stats(3 * 365),
+        "1y": get_period_stats(365),
         "6m": get_period_stats(180),
         "3m": get_period_stats(90),
         "7d": get_period_stats(7),
@@ -271,6 +272,7 @@ def generate_html_report(results, output_path=None):
 
     thresholds = {
         "3y": {"low": 15, "high": 95},
+        "1y": {"low": 15, "high": 95},
         "6m": {"low": 15, "high": 95},
         "3m": {"low": 20, "high": 95},
         "7d": {"low": 25, "high": 95},
@@ -282,7 +284,7 @@ def generate_html_report(results, output_path=None):
     for item in results:
         stats = item
         lt_hits = 0
-        for p_key in ['3y', '6m', '3m']:
+        for p_key in ['1y', '6m', '3m']:
             if stats[p_key] and stats[p_key]['pos_pct'] < thresholds[p_key]['low']: lt_hits += 1
         is_lt_buy = lt_hits >= 2
         is_st_buy_7d = stats['7d'] and stats['7d']['pos_pct'] < thresholds['7d']['low'] and stats['7d']['vol'] >= 10.0
@@ -296,7 +298,7 @@ def generate_html_report(results, output_path=None):
         
         is_sell = False
         is_watch = False
-        for p_key in ["3y", "6m", "3m", "7d", "1d"]:
+        for p_key in ["1y", "6m", "3m", "7d"]:
             p = stats[p_key]
             if p:
                 if p['pos_pct'] > thresholds[p_key]["high"]: is_sell = True
@@ -321,19 +323,16 @@ def generate_html_report(results, output_path=None):
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1750px; margin: 0 auto; padding: 10px; background-color: #f4f7f6; }
             h1, h2 { color: #2c3e50; }
-            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 15px; overflow-x: auto; max-height: 78vh; overflow-y: auto; }
+            .stock-card { background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 30px; padding: 15px; overflow-x: auto; }
             table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px; background: white; border-radius: 8px; font-size: 0.78em; table-layout: fixed; }
             th, td { padding: 4px 2px; text-align: right; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; word-wrap: break-word; overflow: hidden; }
             
-            /* Sticky Header */
-            thead th { position: sticky; z-index: 5; background-color: #34495e; color: white; text-align: center; padding: 6px 2px; }
-            thead tr:nth-child(1) th { top: 0; border-bottom: 2px solid #1a252f; }
-            thead tr:nth-child(2) th { top: 29px; border-bottom: 2px solid #1a252f; }
+            thead th { background-color: #34495e; color: white; text-align: center; padding: 6px 2px; }
             tbody td:first-child, thead th:first-child { border-left: 1px solid #e2e8f0; }
 
             /* Period Separators and Shading */
             .period-sep { border-left: 2.5px solid #2c3e50 !important; }
-            .period-alt { background-color: #f8fafc; }
+            td.period-alt { background-color: #f8fafc; }
             .period-hdr { border-left: 2.5px solid #1a252f !important; }
 
             tbody td:first-child { text-align: left; font-weight: bold; background-color: #f9f9f9; }
@@ -347,9 +346,10 @@ def generate_html_report(results, output_path=None):
             .col-stat { width: 52px; font-size: 0.95em; }
             .col-reason { width: 220px; text-align: left !important; }
 
-            .red-cell { background-color: #ffcccc; color: #cc0000; font-weight: bold; }
-            .green-cell { background-color: #ccffcc; color: #006600; font-weight: bold; }
-            .orange-cell { background-color: #ffe5cc; color: #e67e22; font-weight: bold; }
+            .red-cell { background-color: #ffcccc !important; color: #cc0000; font-weight: bold; }
+            .green-cell { background-color: #ccffcc !important; color: #006600; font-weight: bold; }
+            .orange-cell { background-color: #ffe5cc !important; color: #e67e22; font-weight: bold; }
+            .purple-cell { background-color: #f3e8ff !important; color: #6b21a8; font-weight: bold; }
             .off-hour-text { color: #8e44ad; font-weight: bold; font-size: 0.85em; }
             .watch-reason { font-size: 0.88em; list-style-type: none; padding: 0; margin: 0; text-align: left; }
             .group-header { background-color: #2c3e50; color: white; padding: 10px; margin-top: 40px; border-radius: 8px 8px 0 0; }
@@ -408,11 +408,10 @@ def generate_html_report(results, output_path=None):
                         <th rowspan="2" class="col-target">Price Target (SA)</th>
                         <th rowspan="2" class="col-public">Public.com</th>
                         {"<th rowspan='2' class='col-option'>Option Insights</th>" if is_buy_table else ""}
-                        <th colspan="5" class="period-hdr">3 Year Period</th>
+                        <th colspan="5" class="period-hdr">1 Year Period</th>
                         <th colspan="5" class="period-hdr period-alt">6 Month Period</th>
                         <th colspan="5" class="period-hdr">3 Month Period</th>
                         <th colspan="5" class="period-hdr period-alt">7 Day Period</th>
-                        <th colspan="5" class="period-hdr">1 Day Period</th>
                         <th rowspan="2" class="col-reason period-sep">Watch Reasons</th>
                     </tr>
                     <tr>
@@ -420,7 +419,6 @@ def generate_html_report(results, output_path=None):
                         <th class="col-stat period-sep period-alt">High</th><th class="col-stat period-alt">Low</th><th class="col-stat period-alt">Vol</th><th class="col-stat period-alt">Pos%</th><th class="col-stat period-alt">Gain%</th>
                         <th class="col-stat period-sep">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th><th class="col-stat">Gain%</th>
                         <th class="col-stat period-sep period-alt">High</th><th class="col-stat period-alt">Low</th><th class="col-stat period-alt">Vol</th><th class="col-stat period-alt">Pos%</th><th class="col-stat period-alt">Gain%</th>
-                        <th class="col-stat period-sep">High</th><th class="col-stat">Low</th><th class="col-stat">Vol</th><th class="col-stat">Pos%</th><th class="col-stat">Gain%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -464,7 +462,7 @@ def generate_html_report(results, output_path=None):
             pub_display = pub_rating if pub_rating else "-"
 
             row_html = f"<tr><td class='col-sym'><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td class='col-price'>{price_display}</td><td class='col-target{exp_cls}'>{exp_val_display}</td><td class='col-public{pub_cls}'>{pub_display}</td>{option_html}"
-            for p_idx, p_key in enumerate(["3y", "6m", "3m", "7d", "1d"]):
+            for p_idx, p_key in enumerate(["1y", "6m", "3m", "7d"]):
                 p = stats[p_key]
                 alt = " period-alt" if p_idx % 2 == 1 else ""
                 sep = " period-sep"
@@ -474,7 +472,7 @@ def generate_html_report(results, output_path=None):
                     elif p['pos_pct'] > thresholds[p_key]["high"]: reasons.append(f'<span class="sell-text">SELL</span>: {p_key.upper()} High')
                     vol_cls = " orange-cell" if ((p_key == "3m" and p['vol'] > 50) or (p_key == "7d" and p['vol'] > 20)) else ""
                     if vol_cls: reasons.append(f'<span class="watch-text">WATCH</span>: {p_key.upper()} Vol')
-                    max_cls = " red-cell" if p['max_cur_pct'] > 20.0 else ""
+                    max_cls = " purple-cell" if p['max_cur_pct'] > 20.0 else ""
                     row_html += f"<td class='col-stat{sep}{alt}'>${p['high']:.2f}</td><td class='col-stat{alt}'>${p['low']:.2f}</td><td class='col-stat{vol_cls}{alt}'>{p['vol']:.1f}%</td><td class='col-stat{pos_cls}{alt}'>{p['pos_pct']:.1f}%</td><td class='col-stat{max_cls}{alt}'>+{p['max_cur_pct']:.1f}%</td>"
                 else: row_html += f"<td class='col-stat{sep}{alt}'>-</td><td class='col-stat{alt}'>-</td><td class='col-stat{alt}'>-</td><td class='col-stat{alt}'>-</td><td class='col-stat{alt}'>-</td>"
             
@@ -496,7 +494,7 @@ def generate_html_report(results, output_path=None):
         if sym in seen_symbols: continue
         seen_symbols.add(sym)
         summary_parts = []
-        for p_key in ["3y", "6m", "3m", "7d", "1d"]:
+        for p_key in ["1y", "6m", "3m", "7d"]:
             p = item.get(p_key)
             if p:
                 color = "#cc0000" if p['pos_pct'] < thresholds[p_key]["low"] else ("#006600" if p['pos_pct'] > thresholds[p_key]["high"] else "#333")
@@ -607,7 +605,7 @@ def main():
         if data:
             res = calculate_lows(data, live_info=live_info.get(sym.upper()))
             lt_hits = 0
-            if res['3y'] and res['3y']['pos_pct'] < 15:
+            if res['1y'] and res['1y']['pos_pct'] < 15:
                 lt_hits += 1
             if res['6m'] and res['6m']['pos_pct'] < 15:
                 lt_hits += 1

@@ -36,6 +36,9 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - TER (Teradyne)
 - TSM (Taiwan Semiconductor)
 - TXN (Texas Instruments)
+- SMCI (Super Micro Computer)
+- VRT (Vertiv Holdings)
+- PSTG (Pure Storage)
 
 ## Software, Cloud & Cybersecurity
 - ADBE (Adobe)
@@ -62,6 +65,11 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - TEAM (Atlassian)
 - WDAY (Workday)
 - ZS (Zscaler)
+- MSTR (MicroStrategy)
+- PATH (UiPath)
+- SOUN (SoundHound AI)
+- IONQ (IonQ)
+- TOST (Toast)
 
 ## Internet, E-commerce, Media & Social
 - ABNB (Airbnb)
@@ -81,6 +89,8 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - SPOT (Spotify Technology)
 - UBER (Uber Technologies)
 - Z (Zillow Group)
+- DKNG (DraftKings)
+- JMIA (Jumia Technologies)
 
 ## Fintech & Financial Services
 - AXP (American Express)
@@ -101,6 +111,9 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - SOFI (SoFi Technologies)
 - SPGI (S&P Global)
 - V (Visa)
+- AFRM (Affirm Holdings)
+- SQ (Block / Square)
+- UPST (Upstart Holdings)
 
 ## Healthcare, Pharmaceuticals & Biotech
 - ABBV (AbbVie)
@@ -122,6 +135,10 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - TMO (Thermo Fisher Scientific)
 - UNH (UnitedHealth Group)
 - VRTX (Vertex Pharmaceuticals)
+- VKTX (Viking Therapeutics)
+- SMMT (Summit Therapeutics)
+- RXRX (Recursion Pharmaceuticals)
+- CRSP (CRISPR Therapeutics)
 
 ## Industrial, Defense & Retail Giants
 - BA (Boeing)
@@ -146,6 +163,9 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - UNP (Union Pacific)
 - UPS (United Parcel Service)
 - WMT (Walmart)
+- RIVN (Rivian Automotive)
+- LCID (Lucid Group)
+- JOBY (Joby Aviation)
 
 ## Energy, Materials & Utilities
 - COP (ConocoPhillips)
@@ -159,6 +179,9 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - SLB (Schlumberger)
 - SO (Southern Company)
 - XOM (ExxonMobil)
+- NNE (Nano Nuclear Energy)
+- FSLR (First Solar)
+- OKLO (Oklo Inc.)
 
 ## ETFs & Indices
 - QQQ (Invesco QQQ Trust)

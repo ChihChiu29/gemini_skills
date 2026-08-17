@@ -89,3 +89,13 @@
 - AMZN
 - FB
 - NFLX
+- CELH
+- CAVA
+- CVNA
+- NNE
+- FSLR
+- OKLO
+- DKNG
+- AFRM
+- SQ
+- UPST

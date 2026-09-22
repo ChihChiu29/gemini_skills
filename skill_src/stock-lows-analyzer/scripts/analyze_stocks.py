@@ -151,20 +151,23 @@ def fetch_live_info(symbols):
             for t, p in close_series.items():
                 is_reg = False
                 try:
-                    local_time = t.astimezone(t.tzinfo) if t.tzinfo else t
+                    # yfinance returns UTC timestamps; convert to US/Eastern (market time)
+                    local_time = t.tz_convert('America/New_York') if hasattr(t, 'tz_convert') and t.tzinfo else t
                     h, m = local_time.hour, local_time.minute
                     if (h > 9 or (h == 9 and m >= 30)) and h < 16:
                         is_reg = True
-                except:
-                    pass
+                    time_str = local_time.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    time_str = str(t)
                 
-                intraday.append({"time": str(t), "price": round(float(p), 2), "is_regular": is_reg})
+                intraday.append({"time": time_str, "price": round(float(p), 2), "is_regular": is_reg})
                 
             return {
                 "price": price,
                 "intraday": intraday,
                 "high": round(float(high_series.max()), 2),
-                "low": round(float(low_series.min()), 2)
+                "low": round(float(low_series.min()), 2),
+                "is_last_regular": intraday[-1]["is_regular"] if intraday else True
             }
 
         if len(symbols) > 1:
@@ -251,7 +254,7 @@ def calculate_lows(data, live_info=None):
         "data": data,
         "current": current_price,
         "intraday": live_info['intraday'] if live_info else [],
-        "is_off_hour": live_info is not None and abs(current_price - data['last_price']) > 0.001,
+        "is_off_hour": live_info is not None and not live_info.get('is_last_regular', True),
         "regular_close": data['last_price'],
         "expectation_value": data.get("expectation_value"),
         "3y": get_period_stats(3 * 365),

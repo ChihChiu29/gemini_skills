@@ -211,49 +211,12 @@ def print_deals_table(date_str, deals):
             print(f"    Notes: {d.get('notes')}")
     print("=========================================================================================\n")
 
-def generate_markdown_report(history):
-    """
-    Generate a markdown report in OUTPUT/leasehackr summarizing up to last 90 days.
-    """
-    md_path = OUTPUT_DIR / "leasehackr_ev_deals_report.md"
-    today_str = get_today_str()
-
-    lines = []
-    lines.append(f"# Leasehackr NorCal EV Lease Deals Tracker")
-    lines.append(f"\n*Last updated: {today_str} | Tracking up to last 90 days of cached data*\n")
-    lines.append("> **Note**: Prices show standard advertised pre-negotiated lease terms (excluding 'First EV' conditional discounts). Effective Monthly Cost is calculated as `Monthly + (Upfront / Term)`.\n")
-
-    if not history:
-        lines.append("No data currently available in cache.\n")
-    else:
-        for date_str, deals in history.items():
-            lines.append(f"## Top 6 Deals - {date_str}\n")
-            lines.append("| Rank | Vehicle | Monthly | Upfront (DAS) | Term | Allowed Mileage | Effective Cost | Notes |")
-            lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
-            for i, d in enumerate(deals, 1):
-                car = d.get('car', 'Unknown')
-                m = f"${d.get('monthly', 0)}"
-                u = f"${d.get('upfront', 0):,}"
-                t = f"{d.get('term', 0)} mo"
-                mi = f"{d.get('mileage_per_year', 0):,} mi/yr"
-                eff = f"${d.get('effective_monthly', 0):.2f}/mo"
-                notes = d.get('notes', '').replace('|', '\\|')
-                url = d.get('url', '')
-                car_link = f"[{car}]({url})" if url else car
-                lines.append(f"| {i} | {car_link} | {m} | {u} | {t} | {mi} | **{eff}** | {notes} |")
-            lines.append("")
-
-    with open(md_path, 'w', encoding='utf-8') as f:
-        f.write("\n".join(lines))
-    print(f"Markdown report written to: {md_path}")
-    return md_path
-
 def generate_html_report(history):
     """
-    Generate an HTML report in OUTPUT/leasehackr.
+    Generate an HTML report in OUTPUT/leasehackr with the current date appended to filename.
     """
-    html_path = OUTPUT_DIR / "leasehackr_ev_deals_report.html"
     today_str = get_today_str()
+    html_path = OUTPUT_DIR / f"leasehackr_ev_deals_report_{today_str}.html"
 
     sections_html = []
     for date_str, deals in history.items():
@@ -302,7 +265,7 @@ def generate_html_report(history):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leasehackr NorCal EV Lease Deals Tracker</title>
+    <title>Leasehackr NorCal EV Lease Deals Tracker ({today_str})</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -397,10 +360,10 @@ def main():
     if today_deals and today_str not in history:
         history[today_str] = today_deals
 
-    # 4. Generate Markdown and HTML tables in OUTPUT/leasehackr
-    generate_markdown_report(history)
+    # 4. Generate HTML table in OUTPUT/leasehackr with date appended
     generate_html_report(history)
     print("Done!")
+
 
 if __name__ == '__main__':
     main()

@@ -45,20 +45,61 @@ def load_symbols():
 
 
 # ---------------------------------------------------------------------------
-# Stock price helper (live fetch)
+# Stock price and position tags helper (live fetch)
 # ---------------------------------------------------------------------------
 
-def get_current_price(symbol):
-    """Fetch current stock price live via yfinance."""
+PERIOD_CONFIGS = [
+    ("1y", 365, 10),
+    ("6m", 180, 10),
+    ("3m", 90, 20),
+    ("1m", 30, 20),
+    ("7d", 7, 30),
+]
+
+
+def fetch_stock_price_and_tags(symbol):
+    """Fetch current stock price and 5 range-position tags (1y, 6m, 3m, 1m, 7d)."""
     import math
     try:
         ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1y")
+        if hist.empty:
+            return None, []
+
         price = ticker.fast_info.get('lastPrice')
-        if price is not None and not (isinstance(price, float) and math.isnan(price)):
-            return round(float(price), 2)
+        if price is None or (isinstance(price, float) and math.isnan(price)):
+            price = float(hist['Close'].iloc[-1])
+        price = round(float(price), 2)
+
+        today = datetime.date.today()
+        tags = []
+        for label, days, threshold in PERIOD_CONFIGS:
+            cutoff = (today - datetime.timedelta(days=days)).isoformat()
+            if hist.index.tz is not None:
+                sub = hist[hist.index >= pd.Timestamp(cutoff).tz_localize(hist.index.tz)]
+            else:
+                sub = hist[hist.index >= pd.Timestamp(cutoff)]
+
+            if not sub.empty:
+                high = max(float(sub['High'].max()), price)
+                low = min(float(sub['Low'].min()), price)
+                pos = (price - low) / (high - low) * 100 if high > low else 0.0
+            else:
+                pos = 0.0
+
+            pos = round(pos, 1)
+            is_red = pos < threshold
+            tags.append({
+                "label": f"{label}:{int(round(pos))}%",
+                "is_red": is_red,
+                "pos": pos,
+                "key": label,
+            })
+
+        return price, tags
     except Exception as e:
-        print(f"  Warning: could not get price for {symbol}: {e}")
-    return None
+        print(f"  Warning: could not get price/history for {symbol}: {e}")
+        return None, []
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +138,7 @@ def find_best_expiry(symbol, target_friday):
 # Fetch option chain
 # ---------------------------------------------------------------------------
 
-def fetch_option_chain(symbol, expiry_str, current_price):
+def fetch_option_chain(symbol, expiry_str, current_price, tags=None):
     """Fetch put options chain around current_price, returning structured rows ordered +5 to -5."""
     try:
         ticker = yf.Ticker(symbol)
@@ -128,17 +169,15 @@ def fetch_option_chain(symbol, expiry_str, current_price):
             bid = float(row['bid']) if pd.notna(row['bid']) and row['bid'] > 0 else 0.0
             ask = float(row['ask']) if pd.notna(row['ask']) and row['ask'] > 0 else 0.0
             last = float(row['lastPrice']) if pd.notna(row['lastPrice']) else 0.0
-            avg_price = round((bid + ask) / 2, 2) if (bid + ask) > 0 else round(last, 2)
             strike = round(float(row['strike']), 2)
-            avg_pct = round(avg_price / current_price * 100, 3) if current_price > 0 else 0.0
+            bid_pct = round(bid / current_price * 100, 3) if current_price > 0 else 0.0
             vol = int(row['volume']) if pd.notna(row['volume']) else 0
             oi = int(row['openInterest']) if pd.notna(row['openInterest']) else 0
             rows.append({
                 "offset": offset,
                 "strike": strike,
-                "avg_price": avg_price,
-                "avg_pct": avg_pct,
                 "bid": round(bid, 2),
+                "bid_pct": bid_pct,
                 "ask": round(ask, 2),
                 "last_price": round(last, 2),
                 "volume": vol,
@@ -152,6 +191,7 @@ def fetch_option_chain(symbol, expiry_str, current_price):
             "symbol": symbol.upper(),
             "expiry": expiry_str,
             "current_price": current_price,
+            "tags": tags or [],
             "rows": rows,
             "fetched_at": datetime.datetime.now().isoformat()
         }
@@ -167,11 +207,11 @@ def fetch_option_chain(symbol, expiry_str, current_price):
 # HTML report generation
 # ---------------------------------------------------------------------------
 
-def pct_cell_class(avg_pct, offset=None):
-    """Return CSS class for highlighting avg_pct cells (only for offsets -2 to -5)."""
+def pct_cell_class(bid_pct, offset=None):
+    """Return CSS class for highlighting bid_pct cells (only for offsets -2 to -5)."""
     if offset is not None and offset not in (-2, -3, -4, -5):
         return ""
-    if avg_pct >= 0.5:
+    if bid_pct >= 0.5:
         return "green-cell"
     return ""
 
@@ -194,9 +234,8 @@ def render_symbol_table(opt_data):
                 <tr>
                     <th class="col-idx">#</th>
                     <th class="col-strike">Strike</th>
-                    <th class="col-avg">Avg (Bid/Ask)</th>
-                    <th class="col-pct">Avg / Stock %</th>
                     <th class="col-bid">Bid</th>
+                    <th class="col-pct">Bid / Stock %</th>
                     <th class="col-ask">Ask</th>
                     <th class="col-last">Last Price</th>
                     <th class="col-vol">Volume</th>
@@ -210,16 +249,15 @@ def render_symbol_table(opt_data):
         offset = row.get('offset', 0)
         offset_label = f"{offset:+d}" if offset != 0 else "ATM"
         row_class = ' style="background-color: #fffbe6;"' if offset == 0 else ""
-        pct_cls = pct_cell_class(row['avg_pct'], offset)
+        pct_cls = pct_cell_class(row['bid_pct'], offset)
         pct_td_class = f' class="{pct_cls}"' if pct_cls else ""
 
         html += f"""
                 <tr{row_class}>
                     <td style="text-align:center; font-weight:bold;">{offset_label}</td>
                     <td>${row['strike']:.2f}</td>
-                    <td>${row['avg_price']:.2f}</td>
-                    <td{pct_td_class}>{row['avg_pct']:.3f}%</td>
                     <td>${row['bid']:.2f}</td>
+                    <td{pct_td_class}>{row['bid_pct']:.3f}%</td>
                     <td>${row['ask']:.2f}</td>
                     <td>${row['last_price']:.2f}</td>
                     <td>{row['volume']:,}</td>
@@ -247,42 +285,41 @@ def get_summary_rows(opt_data):
     return result
 
 
-def get_latest_buy_targets():
-    """Extract set of BUY TARGET symbols from the most recent stock_report_*.html in OUTPUT/stock_prices/."""
-    stock_dir = PROJECT_ROOT / "OUTPUT" / "stock_prices"
-    if not stock_dir.exists():
-        return set()
-    reports = sorted(stock_dir.glob("stock_report_*.html"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not reports:
-        return set()
-    latest_report = reports[0]
-    try:
-        html = latest_report.read_text(encoding="utf-8")
-        m = re.search(r'buy-header.*?<table.*?>(.*?)</table>', html, re.DOTALL)
-        if m:
-            symbols = re.findall(r"<td class='col-sym'><a href='#chart-([A-Z]+)'", m.group(1))
-            return set(symbols)
-    except Exception as e:
-        print(f"  Warning: could not read buy targets from {latest_report.name}: {e}")
-    return set()
+def format_pos_tags(tags):
+    """Format position tags HTML: colored red if threshold met, otherwise normal gray badge."""
+    if not tags:
+        return ""
+    tag_spans = []
+    for t in tags:
+        cls = "pos-tag pos-tag-red" if t.get("is_red") else "pos-tag"
+        tag_spans.append(f'<span class="{cls}">{t["label"]}</span>')
+    return "".join(tag_spans)
 
 
-def render_summary_table(all_opt_data, buy_targets=None):
+def render_summary_table(all_opt_data):
     """Render the summary table at the top, one row per symbol, showing -2 and -3 strike data."""
-    if buy_targets is None:
-        buy_targets = set()
-
     html = """
     <div class="stock-card" id="top">
-        <h2>📋 Options Summary (Strikes -2 and -3 below ATM)</h2>
-        <p style="font-size: 0.85em; color: #666; margin-top: -5px; margin-bottom: 12px;">
-            💡 <em>Click headers to sort: <strong>Symbol</strong>, <strong>Signal</strong>, <strong>Stock Price</strong>, <strong>Strike -2 Avg/Stk%</strong>, <strong>Strike -3 Avg/Stk%</strong>. Stocks under $30 are highlighted in yellow.</em>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h2 style="margin: 0;">📋 Options Summary (Strikes -2 and -3 below ATM)</h2>
+            <button class="btn-recommend" onclick="sortRecommended()" title="Sort: 1) Yellow row (<$30), 2) Avg green cell Bid/Stk%, 3) Red tag count, 4) Symbol">
+                ⭐ Recommend
+            </button>
+        </div>
+        <div class="color-legend">
+            <strong>🎨 Color Legend:</strong>
+            <span class="legend-item"><span class="legend-box" style="background-color: #ccffcc; border: 1px solid #a3e6a3;"></span> <strong>Green cell:</strong> Bid/Stock% &ge; 0.5% (attractive premium)</span>
+            <span class="legend-item"><span class="legend-box" style="background-color: #fff3cd; border: 1px solid #ffeeba;"></span> <strong>Yellow row:</strong> Stock price under $30</span>
+            <span class="legend-item"><span class="legend-box" style="background-color: #ffebee; border: 1px solid #ffcdd2;"></span> <strong>Red tag:</strong> Near multi-period low (1y/6m &lt;10%, 3m/1m &lt;20%, 7d &lt;30%)</span>
+        </div>
+        <p style="font-size: 0.85em; color: #666; margin-top: -2px; margin-bottom: 12px;">
+            💡 <em>Click headers to sort: <strong>Symbol</strong>, <strong>Position Tags (Red Tag Count)</strong>, <strong>Stock Price</strong>, <strong>Strike -2 Bid/Stk%</strong>, <strong>Strike -3 Bid/Stk%</strong>. Or click <strong>⭐ Recommend</strong> for top picks.</em>
         </p>
         <table id="summary-table">
             <thead>
                 <tr>
                     <th rowspan="2" class="col-sym sortable" onclick="sortSummaryTable(0, 'text')" title="Sort by Symbol">Symbol <span class="sort-arrow"></span></th>
-                    <th rowspan="2" class="col-target sortable" onclick="sortSummaryTable(1, 'text')" title="Sort by Signal">Signal <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-target sortable" onclick="sortSummaryTable(1, 'num')" title="Sort by Red Tag Count (Ties broken by Symbol)">Position Tags <span class="sort-arrow"></span></th>
                     <th rowspan="2" class="col-price sortable" onclick="sortSummaryTable(2, 'num')" title="Sort by Stock Price">Stock Price <span class="sort-arrow"></span></th>
                     <th rowspan="2" class="col-exp">Expiry</th>
                     <th colspan="4" class="period-hdr" style="text-align:center;">Strike -2</th>
@@ -290,12 +327,12 @@ def render_summary_table(all_opt_data, buy_targets=None):
                 </tr>
                 <tr>
                     <th class="period-sep col-stat">Strike</th>
-                    <th class="col-stat">Avg</th>
-                    <th class="col-stat sortable" onclick="sortSummaryTable(6, 'num')" title="Sort by Strike -2 Avg/Stk%">Avg/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat">Bid</th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable(6, 'num')" title="Sort by Strike -2 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
                     <th class="col-stat">Last</th>
                     <th class="period-sep col-stat">Strike</th>
-                    <th class="col-stat">Avg</th>
-                    <th class="col-stat sortable" onclick="sortSummaryTable(10, 'num')" title="Sort by Strike -3 Avg/Stk%">Avg/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat">Bid</th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable(10, 'num')" title="Sort by Strike -3 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
                     <th class="col-stat">Last</th>
                 </tr>
             </thead>
@@ -308,23 +345,30 @@ def render_summary_table(all_opt_data, buy_targets=None):
         sym = opt_data['symbol']
         current_price = opt_data['current_price']
         expiry = opt_data['expiry']
+        tags = opt_data.get('tags', [])
         summary = get_summary_rows(opt_data)
 
         sym_link = f'<a href="#options-{sym}" style="text-decoration:none; color:#2c3e50; font-weight:bold;">{sym}</a>'
-        buy_badge = '<span class="buy-badge">BUY</span>' if sym in buy_targets else ""
-        row_cls = ' class="price-low"' if current_price < 30.0 else ""
+        tags_html = format_pos_tags(tags)
+        # Store count of red tags
+        red_count = sum(1 for t in tags if t.get('is_red'))
+        is_yellow = 1 if current_price < 30.0 else 0
+        row_cls = ' class="price-low"' if is_yellow else ""
 
         cells = ""
+        green_values = []
         for offset in [-2, -3]:
             row = summary.get(offset)
             sep = ' class="period-sep"'
             if row:
-                pct_cls = pct_cell_class(row['avg_pct'], offset)
+                pct_cls = pct_cell_class(row['bid_pct'], offset)
+                if pct_cls == "green-cell":
+                    green_values.append(row['bid_pct'])
                 pct_td_class = f' class="{pct_cls}"' if pct_cls else ""
                 cells += f"""
                     <td{sep}>${row['strike']:.2f}</td>
-                    <td>${row['avg_price']:.2f}</td>
-                    <td{pct_td_class}>{row['avg_pct']:.3f}%</td>
+                    <td>${row['bid']:.2f}</td>
+                    <td{pct_td_class}>{row['bid_pct']:.3f}%</td>
                     <td>${row['last_price']:.2f}</td>
                 """
             else:
@@ -332,10 +376,13 @@ def render_summary_table(all_opt_data, buy_targets=None):
                     <td{sep}>—</td><td>—</td><td>—</td><td>—</td>
                 """
 
+        # Average of green cell values (0 if none)
+        green_avg = sum(green_values) / len(green_values) if green_values else 0.0
+
         html += f"""
-                <tr{row_cls}>
+                <tr{row_cls} data-yellow="{is_yellow}" data-red="{red_count}" data-green-avg="{green_avg:.4f}" data-sym="{sym}">
                     <td style="text-align:left;">{sym_link}</td>
-                    <td style="text-align:center;">{buy_badge}</td>
+                    <td style="text-align:center;" data-val="{red_count}">{tags_html}</td>
                     <td>${current_price:.2f}</td>
                     <td>{expiry}</td>
                     {cells}
@@ -350,7 +397,7 @@ def render_summary_table(all_opt_data, buy_targets=None):
     return html
 
 
-def generate_html_report(all_opt_data, output_path=None):
+def generate_html_report(all_opt_data, target_friday=None, output_path=None):
     """Generate the complete HTML report."""
     now = datetime.datetime.now()
     if output_path is None:
@@ -359,17 +406,18 @@ def generate_html_report(all_opt_data, output_path=None):
     else:
         output_path = Path(output_path)
 
-    buy_targets = get_latest_buy_targets()
-    summary_html = render_summary_table(all_opt_data, buy_targets)
+    summary_html = render_summary_table(all_opt_data)
 
     tables_html = ""
     for opt_data in sorted(all_opt_data, key=lambda d: d['symbol']):
         tables_html += render_symbol_table(opt_data)
 
+    expiry_label = f"Expiry {target_friday.strftime('%Y-%m-%d (%A)')}" if target_friday else "Upcoming Friday Expiry"
+
     full_html = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Put Options Analysis Report</title>
+    <title>Put Options Analysis Report — {expiry_label}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -394,25 +442,81 @@ def generate_html_report(all_opt_data, output_path=None):
         }}
         tbody td:first-child {{ text-align: center; }}
         .col-sym {{ width: 70px; }}
-        .col-target {{ width: 65px; text-align: center; }}
+        .col-target {{ width: 230px; text-align: center; white-space: nowrap; }}
         .col-price {{ width: 85px; }}
         .col-exp {{ width: 90px; }}
         .col-idx {{ width: 50px; }}
         .col-strike {{ width: 85px; }}
-        .col-avg {{ width: 90px; }}
         .col-pct {{ width: 95px; }}
-        .col-bid {{ width: 70px; }}
+        .col-bid {{ width: 75px; }}
         .col-ask {{ width: 70px; }}
         .col-last {{ width: 85px; }}
         .col-vol {{ width: 75px; }}
         .col-oi {{ width: 80px; }}
         .col-stat {{ width: 70px; font-size: 0.95em; }}
+        .color-legend {{
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.85em;
+            color: #4a5568;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }}
+        .legend-item {{ display: inline-flex; align-items: center; gap: 5px; }}
+        .legend-box {{
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            vertical-align: middle;
+        }}
         .green-cell {{ background-color: #ccffcc !important; color: #006600; font-weight: bold; }}
         .red-cell {{ background-color: #ffcccc !important; color: #cc0000; font-weight: bold; }}
         .period-sep {{ border-left: 2.5px solid #2c3e50 !important; }}
         .period-hdr {{ border-left: 2.5px solid #1a252f !important; }}
-        .buy-badge {{ background-color: #e74c3c; color: white; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; display: inline-block; }}
+        .pos-tag {{
+            display: inline-block;
+            font-size: 0.80em;
+            padding: 1px 4px;
+            margin: 1px 2px;
+            border-radius: 3px;
+            background-color: #edf2f7;
+            color: #4a5568;
+            font-weight: 500;
+        }}
+        .pos-tag-red {{
+            background-color: #ffebee !important;
+            color: #c62828 !important;
+            font-weight: bold !important;
+            border: 1px solid #ffcdd2;
+        }}
         .price-low {{ background-color: #fff3cd !important; color: #856404; }}
+        .btn-recommend {{
+            background: linear-gradient(135deg, #f1c40f, #f39c12);
+            color: #2c3e50;
+            border: 1px solid #d68910;
+            padding: 6px 14px;
+            font-size: 0.9em;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }}
+        .btn-recommend:hover {{
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
+        }}
+        .btn-recommend:active {{
+            transform: translateY(0);
+        }}
         .sortable {{ cursor: pointer; user-select: none; transition: background-color 0.15s; }}
         .sortable:hover {{ background-color: #2c3e50; text-decoration: underline; }}
         .sort-arrow {{ font-size: 0.8em; margin-left: 3px; color: #f1c40f; }}
@@ -420,40 +524,87 @@ def generate_html_report(all_opt_data, output_path=None):
     </style>
 </head>
 <body>
-    <h1>📊 Put Options Analysis Report</h1>
-    <p>Generated on: {now.strftime("%Y-%m-%d %H:%M")} | Showing put options for upcoming Friday expiry</p>
+    <h1>📊 Put Options Analysis Report ({expiry_label})</h1>
+    <p>Generated on: {now.strftime("%Y-%m-%d %H:%M")} | Target Option Expiry: <strong>{expiry_label}</strong></p>
     {summary_html}
     <h2>Per-Symbol Put Option Chains</h2>
     {tables_html}
 
     <script>
     let sortDirections = {{}};
+
+    function sortRecommended() {{
+        const table = document.getElementById("summary-table");
+        if (!table) return;
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+
+        rows.sort((a, b) => {{
+            // 1. Yellow row first (<$30) -> 1 before 0
+            const yA = parseInt(a.getAttribute('data-yellow') || '0', 10);
+            const yB = parseInt(b.getAttribute('data-yellow') || '0', 10);
+            if (yA !== yB) return yB - yA;
+
+            // 2. Average of values in green cells -> descending (highest avg first, 0 if none)
+            const gA = parseFloat(a.getAttribute('data-green-avg') || '0');
+            const gB = parseFloat(b.getAttribute('data-green-avg') || '0');
+            if (Math.abs(gA - gB) > 0.00001) return gB - gA;
+
+            // 3. Red tag count -> descending (highest count first)
+            const rA = parseInt(a.getAttribute('data-red') || '0', 10);
+            const rB = parseInt(b.getAttribute('data-red') || '0', 10);
+            if (rA !== rB) return rB - rA;
+
+            // 4. Symbol name -> ascending (A-Z)
+            const symA = (a.getAttribute('data-sym') || a.children[0].innerText).trim();
+            const symB = (b.getAttribute('data-sym') || b.children[0].innerText).trim();
+            return symA.localeCompare(symB);
+        }});
+
+        rows.forEach(r => tbody.appendChild(r));
+
+        // Clear header arrows since custom multi-level sort was applied
+        table.querySelectorAll('.sort-arrow').forEach(el => el.innerText = '');
+        sortDirections = {{}};
+    }}
+
     function sortSummaryTable(colIndex, type) {{
         const table = document.getElementById("summary-table");
         if (!table) return;
         const tbody = table.querySelector("tbody");
         const rows = Array.from(tbody.querySelectorAll("tr"));
         
-        // For numbers default to descending (highest first), for text default to ascending
-        const defaultDir = (type === 'num') ? 'asc' : 'desc';
+        // For column 1 (red tag count) and numbers default to descending (highest first)
+        const defaultDir = (colIndex === 1 || type === 'num') ? 'asc' : 'desc';
         const currentDir = sortDirections[colIndex] || defaultDir;
         const newDir = currentDir === 'asc' ? 'desc' : 'asc';
         sortDirections = {{}};
         sortDirections[colIndex] = newDir;
 
         rows.sort((a, b) => {{
-            let valA = a.children[colIndex] ? a.children[colIndex].innerText.trim() : '';
-            let valB = b.children[colIndex] ? b.children[colIndex].innerText.trim() : '';
+            let cellA = a.children[colIndex];
+            let cellB = b.children[colIndex];
+            let valA = cellA ? (cellA.getAttribute('data-val') !== null ? cellA.getAttribute('data-val') : cellA.innerText.trim()) : '';
+            let valB = cellB ? (cellB.getAttribute('data-val') !== null ? cellB.getAttribute('data-val') : cellB.innerText.trim()) : '';
             
+            let diff = 0;
             if (type === 'num') {{
                 let numA = parseFloat(valA.replace(/[^0-9.-]/g, ''));
                 let numB = parseFloat(valB.replace(/[^0-9.-]/g, ''));
                 if (isNaN(numA)) numA = -Infinity;
                 if (isNaN(numB)) numB = -Infinity;
-                return newDir === 'asc' ? numA - numB : numB - numA;
+                diff = newDir === 'asc' ? numA - numB : numB - numA;
             }} else {{
-                return newDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                diff = newDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
             }}
+
+            // Tie-breaker using Symbol (column 0) ascending
+            if (diff === 0 && colIndex !== 0) {{
+                let symA = a.children[0] ? a.children[0].innerText.trim() : '';
+                let symB = b.children[0] ? b.children[0].innerText.trim() : '';
+                return symA.localeCompare(symB);
+            }}
+            return diff;
         }});
 
         rows.forEach(r => tbody.appendChild(r));
@@ -502,8 +653,8 @@ def main():
 
         print(f"  [{i+1}/{len(symbols)}] {sym}...", end=" ")
 
-        # 1. Get current stock price
-        price = get_current_price(sym)
+        # 1. Get current stock price and range-position tags
+        price, tags = fetch_stock_price_and_tags(sym)
         if price is None:
             print("SKIP (no price)")
             continue
@@ -515,7 +666,7 @@ def main():
             continue
 
         # 3. Fetch option chain
-        opt_data = fetch_option_chain(sym, expiry, price)
+        opt_data = fetch_option_chain(sym, expiry, price, tags=tags)
         if opt_data is None:
             print("SKIP (no chain)")
             continue
@@ -526,7 +677,7 @@ def main():
     print(f"\nCollected option data for {len(all_opt_data)} symbols.")
 
     if all_opt_data:
-        generate_html_report(all_opt_data)
+        generate_html_report(all_opt_data, target_friday=target_friday)
     else:
         print("No option data collected; no report generated.")
 

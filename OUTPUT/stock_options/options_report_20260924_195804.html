@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Put Options Analysis Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6; color: #333; max-width: 1400px; margin: 0 auto; padding: 10px;
+            background-color: #f4f7f6;
+        }
+        h1, h2, h3 { color: #2c3e50; }
+        .stock-card {
+            background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 25px; padding: 15px; overflow-x: auto;
+        }
+        table {
+            width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 15px;
+            background: white; border-radius: 8px; font-size: 0.85em;
+        }
+        th, td {
+            padding: 6px 8px; text-align: right; border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+        }
+        thead th {
+            background-color: #34495e; color: white; text-align: center; padding: 8px 6px;
+        }
+        tbody td:first-child { text-align: center; }
+        .col-sym { width: 70px; }
+        .col-target { width: 270px; text-align: center; white-space: nowrap; }
+        .col-price { width: 85px; }
+        .col-exp { width: 90px; }
+        .col-idx { width: 50px; }
+        .col-strike { width: 85px; }
+        .col-avg { width: 90px; }
+        .col-pct { width: 95px; }
+        .col-bid { width: 70px; }
+        .col-ask { width: 70px; }
+        .col-last { width: 85px; }
+        .col-vol { width: 75px; }
+        .col-oi { width: 80px; }
+        .col-stat { width: 70px; font-size: 0.95em; }
+        .green-cell { background-color: #ccffcc !important; color: #006600; font-weight: bold; }
+        .red-cell { background-color: #ffcccc !important; color: #cc0000; font-weight: bold; }
+        .period-sep { border-left: 2.5px solid #2c3e50 !important; }
+        .period-hdr { border-left: 2.5px solid #1a252f !important; }
+        .pos-tag {
+            display: inline-block;
+            font-size: 0.80em;
+            padding: 1px 4px;
+            margin: 1px 2px;
+            border-radius: 3px;
+            background-color: #edf2f7;
+            color: #4a5568;
+            font-weight: 500;
+        }
+        .pos-tag-red {
+            background-color: #ffebee !important;
+            color: #c62828 !important;
+            font-weight: bold !important;
+            border: 1px solid #ffcdd2;
+        }
+        .price-low { background-color: #fff3cd !important; color: #856404; }
+        .sortable { cursor: pointer; user-select: none; transition: background-color 0.15s; }
+        .sortable:hover { background-color: #2c3e50; text-decoration: underline; }
+        .sort-arrow { font-size: 0.8em; margin-left: 3px; color: #f1c40f; }
+        a { color: #3498db; }
+    </style>
+</head>
+<body>
+    <h1>📊 Put Options Analysis Report</h1>
+    <p>Generated on: 2026-09-24 19:58 | Showing put options for upcoming Friday expiry</p>
+    
+    <div class="stock-card" id="top">
+        <h2>📋 Options Summary (Strikes -2 and -3 below ATM)</h2>
+        <p style="font-size: 0.85em; color: #666; margin-top: -5px; margin-bottom: 12px;">
+            💡 <em>Click headers to sort: <strong>Symbol</strong>, <strong>Position Tags (1y%)</strong>, <strong>Stock Price</strong>, <strong>Strike -2 Avg/Stk%</strong>, <strong>Strike -3 Avg/Stk%</strong>. Stocks under $30 are highlighted in yellow.</em>
+        </p>
+        <table id="summary-table">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="col-sym sortable" onclick="sortSummaryTable(0, 'text')" title="Sort by Symbol">Symbol <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-target sortable" onclick="sortSummaryTable(1, 'num')" title="Sort by 1y Position %">Position Tags <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-price sortable" onclick="sortSummaryTable(2, 'num')" title="Sort by Stock Price">Stock Price <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-exp">Expiry</th>
+                    <th colspan="4" class="period-hdr" style="text-align:center;">Strike -2</th>
+                    <th colspan="4" class="period-hdr" style="text-align:center;">Strike -3</th>
+                </tr>
+                <tr>
+                    <th class="period-sep col-stat">Strike</th>
+                    <th class="col-stat">Avg</th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable(6, 'num')" title="Sort by Strike -2 Avg/Stk%">Avg/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat">Last</th>
+                    <th class="period-sep col-stat">Strike</th>
+                    <th class="col-stat">Avg</th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable(10, 'num')" title="Sort by Strike -3 Avg/Stk%">Avg/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat">Last</th>
+                </tr>
+            </thead>
+            <tbody>
+    
+                <tr>
+                    <td style="text-align:left;"><a href="#options-AAPL" style="text-decoration:none; color:#2c3e50; font-weight:bold;">AAPL</a></td>
+                    <td style="text-align:center;" data-val="90.8"><span class="pos-tag">1y:90.8%</span><span class="pos-tag">6m:90.6%</span><span class="pos-tag">3m:86.8%</span><span class="pos-tag">1m:74.6%</span><span class="pos-tag">7d:37.9%</span></td>
+                    <td>$335.92</td>
+                    <td>2026-09-25</td>
+                    
+                    <td class="period-sep">$330.00</td>
+                    <td>$0.21</td>
+                    <td>0.063%</td>
+                    <td>$0.21</td>
+                
+                    <td class="period-sep">$327.50</td>
+                    <td>$0.08</td>
+                    <td>0.024%</td>
+                    <td>$0.07</td>
+                
+                </tr>
+        
+                <tr>
+                    <td style="text-align:left;"><a href="#options-NKE" style="text-decoration:none; color:#2c3e50; font-weight:bold;">NKE</a></td>
+                    <td style="text-align:center;" data-val="1.6"><span class="pos-tag pos-tag-red">1y:1.6%</span><span class="pos-tag pos-tag-red">6m:3.8%</span><span class="pos-tag pos-tag-red">3m:6.9%</span><span class="pos-tag pos-tag-red">1m:15.6%</span><span class="pos-tag">7d:37.9%</span></td>
+                    <td>$35.99</td>
+                    <td>2026-09-25</td>
+                    
+                    <td class="period-sep">$35.00</td>
+                    <td>$0.03</td>
+                    <td>0.083%</td>
+                    <td>$0.02</td>
+                
+                    <td class="period-sep">$34.50</td>
+                    <td>$0.01</td>
+                    <td>0.028%</td>
+                    <td>$0.01</td>
+                
+                </tr>
+        
+            </tbody>
+        </table>
+    </div>
+    
+    <h2>Per-Symbol Put Option Chains</h2>
+    
+    <div class="stock-card" id="options-AAPL">
+        <h3>AAPL — Put Options for 2026-09-25
+            <span style="font-size: 0.7em; color: #666;"> | Stock: $335.92</span>
+            <a href='#top' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a>
+        </h3>
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-idx">#</th>
+                    <th class="col-strike">Strike</th>
+                    <th class="col-avg">Avg (Bid/Ask)</th>
+                    <th class="col-pct">Avg / Stock %</th>
+                    <th class="col-bid">Bid</th>
+                    <th class="col-ask">Ask</th>
+                    <th class="col-last">Last Price</th>
+                    <th class="col-vol">Volume</th>
+                    <th class="col-oi">Open Int.</th>
+                </tr>
+            </thead>
+            <tbody>
+    
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+5</td>
+                    <td>$347.50</td>
+                    <td>$11.65</td>
+                    <td>3.468%</td>
+                    <td>$10.70</td>
+                    <td>$12.60</td>
+                    <td>$9.85</td>
+                    <td>3,219</td>
+                    <td>1,596</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+4</td>
+                    <td>$345.00</td>
+                    <td>$8.98</td>
+                    <td>2.673%</td>
+                    <td>$8.40</td>
+                    <td>$9.55</td>
+                    <td>$8.90</td>
+                    <td>310</td>
+                    <td>3,131</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+3</td>
+                    <td>$342.50</td>
+                    <td>$6.50</td>
+                    <td>1.935%</td>
+                    <td>$6.25</td>
+                    <td>$6.75</td>
+                    <td>$6.50</td>
+                    <td>345</td>
+                    <td>2,172</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+2</td>
+                    <td>$340.00</td>
+                    <td>$4.28</td>
+                    <td>1.274%</td>
+                    <td>$4.10</td>
+                    <td>$4.45</td>
+                    <td>$4.33</td>
+                    <td>4,284</td>
+                    <td>5,272</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+1</td>
+                    <td>$337.50</td>
+                    <td>$2.56</td>
+                    <td>0.762%</td>
+                    <td>$2.52</td>
+                    <td>$2.60</td>
+                    <td>$2.50</td>
+                    <td>28,871</td>
+                    <td>2,250</td>
+                </tr>
+        
+                <tr style="background-color: #fffbe6;">
+                    <td style="text-align:center; font-weight:bold;">ATM</td>
+                    <td>$335.00</td>
+                    <td>$1.25</td>
+                    <td>0.372%</td>
+                    <td>$1.23</td>
+                    <td>$1.28</td>
+                    <td>$1.24</td>
+                    <td>59,881</td>
+                    <td>6,868</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-1</td>
+                    <td>$332.50</td>
+                    <td>$0.54</td>
+                    <td>0.161%</td>
+                    <td>$0.52</td>
+                    <td>$0.55</td>
+                    <td>$0.54</td>
+                    <td>42,385</td>
+                    <td>4,956</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-2</td>
+                    <td>$330.00</td>
+                    <td>$0.21</td>
+                    <td>0.063%</td>
+                    <td>$0.20</td>
+                    <td>$0.21</td>
+                    <td>$0.21</td>
+                    <td>41,469</td>
+                    <td>11,608</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-3</td>
+                    <td>$327.50</td>
+                    <td>$0.08</td>
+                    <td>0.024%</td>
+                    <td>$0.07</td>
+                    <td>$0.08</td>
+                    <td>$0.07</td>
+                    <td>8,119</td>
+                    <td>5,442</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-4</td>
+                    <td>$325.00</td>
+                    <td>$0.04</td>
+                    <td>0.012%</td>
+                    <td>$0.03</td>
+                    <td>$0.04</td>
+                    <td>$0.04</td>
+                    <td>5,521</td>
+                    <td>7,612</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-5</td>
+                    <td>$322.50</td>
+                    <td>$0.02</td>
+                    <td>0.006%</td>
+                    <td>$0.01</td>
+                    <td>$0.03</td>
+                    <td>$0.02</td>
+                    <td>4,711</td>
+                    <td>3,338</td>
+                </tr>
+        
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="stock-card" id="options-NKE">
+        <h3>NKE — Put Options for 2026-09-25
+            <span style="font-size: 0.7em; color: #666;"> | Stock: $35.99</span>
+            <a href='#top' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a>
+        </h3>
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-idx">#</th>
+                    <th class="col-strike">Strike</th>
+                    <th class="col-avg">Avg (Bid/Ask)</th>
+                    <th class="col-pct">Avg / Stock %</th>
+                    <th class="col-bid">Bid</th>
+                    <th class="col-ask">Ask</th>
+                    <th class="col-last">Last Price</th>
+                    <th class="col-vol">Volume</th>
+                    <th class="col-oi">Open Int.</th>
+                </tr>
+            </thead>
+            <tbody>
+    
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+5</td>
+                    <td>$38.50</td>
+                    <td>$2.67</td>
+                    <td>7.419%</td>
+                    <td>$2.43</td>
+                    <td>$2.90</td>
+                    <td>$2.75</td>
+                    <td>87</td>
+                    <td>38</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+4</td>
+                    <td>$38.00</td>
+                    <td>$2.00</td>
+                    <td>5.557%</td>
+                    <td>$1.96</td>
+                    <td>$2.05</td>
+                    <td>$2.00</td>
+                    <td>2,723</td>
+                    <td>1,734</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+3</td>
+                    <td>$37.50</td>
+                    <td>$1.55</td>
+                    <td>4.307%</td>
+                    <td>$1.44</td>
+                    <td>$1.66</td>
+                    <td>$1.63</td>
+                    <td>617</td>
+                    <td>367</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+2</td>
+                    <td>$37.00</td>
+                    <td>$1.00</td>
+                    <td>2.779%</td>
+                    <td>$0.96</td>
+                    <td>$1.05</td>
+                    <td>$1.00</td>
+                    <td>253</td>
+                    <td>3,510</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">+1</td>
+                    <td>$36.50</td>
+                    <td>$0.58</td>
+                    <td>1.612%</td>
+                    <td>$0.55</td>
+                    <td>$0.61</td>
+                    <td>$0.60</td>
+                    <td>564</td>
+                    <td>2,824</td>
+                </tr>
+        
+                <tr style="background-color: #fffbe6;">
+                    <td style="text-align:center; font-weight:bold;">ATM</td>
+                    <td>$36.00</td>
+                    <td>$0.26</td>
+                    <td>0.722%</td>
+                    <td>$0.24</td>
+                    <td>$0.27</td>
+                    <td>$0.26</td>
+                    <td>4,266</td>
+                    <td>12,759</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-1</td>
+                    <td>$35.50</td>
+                    <td>$0.09</td>
+                    <td>0.250%</td>
+                    <td>$0.07</td>
+                    <td>$0.10</td>
+                    <td>$0.10</td>
+                    <td>3,812</td>
+                    <td>4,419</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-2</td>
+                    <td>$35.00</td>
+                    <td>$0.03</td>
+                    <td>0.083%</td>
+                    <td>$0.02</td>
+                    <td>$0.03</td>
+                    <td>$0.02</td>
+                    <td>2,285</td>
+                    <td>5,506</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-3</td>
+                    <td>$34.50</td>
+                    <td>$0.01</td>
+                    <td>0.028%</td>
+                    <td>$0.00</td>
+                    <td>$0.01</td>
+                    <td>$0.01</td>
+                    <td>455</td>
+                    <td>2,071</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-4</td>
+                    <td>$34.00</td>
+                    <td>$0.01</td>
+                    <td>0.028%</td>
+                    <td>$0.00</td>
+                    <td>$0.01</td>
+                    <td>$0.01</td>
+                    <td>1,005</td>
+                    <td>4,357</td>
+                </tr>
+        
+                <tr>
+                    <td style="text-align:center; font-weight:bold;">-5</td>
+                    <td>$33.50</td>
+                    <td>$0.01</td>
+                    <td>0.028%</td>
+                    <td>$0.00</td>
+                    <td>$0.01</td>
+                    <td>$0.01</td>
+                    <td>1</td>
+                    <td>675</td>
+                </tr>
+        
+            </tbody>
+        </table>
+    </div>
+    
+
+    <script>
+    let sortDirections = {};
+    function sortSummaryTable(colIndex, type) {
+        const table = document.getElementById("summary-table");
+        if (!table) return;
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+        
+        // For numbers default to descending (highest first), for text default to ascending
+        const defaultDir = (type === 'num') ? 'asc' : 'desc';
+        const currentDir = sortDirections[colIndex] || defaultDir;
+        const newDir = currentDir === 'asc' ? 'desc' : 'asc';
+        sortDirections = {};
+        sortDirections[colIndex] = newDir;
+
+        rows.sort((a, b) => {
+            let cellA = a.children[colIndex];
+            let cellB = b.children[colIndex];
+            let valA = cellA ? (cellA.getAttribute('data-val') !== null ? cellA.getAttribute('data-val') : cellA.innerText.trim()) : '';
+            let valB = cellB ? (cellB.getAttribute('data-val') !== null ? cellB.getAttribute('data-val') : cellB.innerText.trim()) : '';
+            
+            if (type === 'num') {
+                let numA = parseFloat(valA.replace(/[^0-9.-]/g, ''));
+                let numB = parseFloat(valB.replace(/[^0-9.-]/g, ''));
+                if (isNaN(numA)) numA = -Infinity;
+                if (isNaN(numB)) numB = -Infinity;
+                return newDir === 'asc' ? numA - numB : numB - numA;
+            } else {
+                return newDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            }
+        });
+
+        rows.forEach(r => tbody.appendChild(r));
+
+        table.querySelectorAll('.sort-arrow').forEach(el => el.innerText = '');
+        const sortableHeaders = table.querySelectorAll('.sortable');
+        sortableHeaders.forEach(th => {
+            if (th.getAttribute('onclick') && th.getAttribute('onclick').includes(colIndex + ',')) {
+                const arrow = th.querySelector('.sort-arrow');
+                if (arrow) arrow.innerText = newDir === 'asc' ? ' ▲' : ' ▼';
+            }
+        });
+    }
+    </script>
+</body>
+</html>

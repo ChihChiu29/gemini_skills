@@ -592,9 +592,9 @@ def main():
         symbols = []
         for p in [tech_path, nontech_path, manual_path]:
             if p.exists():
-                with open(p, "r") as f:
+                with open(p, "r", encoding="utf-8") as f:
                     content = f.read()
-                    symbols.extend(re.findall(r'- ([A-Z]+)', content))
+                    symbols.extend(re.findall(r'^[ \t]*-[ \t]+([A-Z]+)', content, re.MULTILINE))
         # Deduplicate while preserving order
         symbols = list(dict.fromkeys(symbols))
     else:

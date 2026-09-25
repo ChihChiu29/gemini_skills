@@ -40,7 +40,7 @@ def load_symbols():
         p = ref_dir / fname
         if p.exists():
             with open(p, "r", encoding="utf-8") as f:
-                symbols.extend(re.findall(r'- ([A-Z]+)', f.read()))
+                symbols.extend(re.findall(r'^[ \t]*-[ \t]+([A-Z]+)', f.read(), re.MULTILINE))
     return list(dict.fromkeys(symbols))  # deduplicate, preserve order
 
 

@@ -97,5 +97,36 @@
 - OKLO
 - DKNG
 - AFRM
-- SQ
+- XYZ
 - UPST
+
+# Essential Utilities, Energy Infrastructure, Telecom, Banking & Staples (<$30)
+- AAL (American Airlines)
+- ACI (Albertsons Companies : Essential Grocery Retail)
+- AES (The AES Corporation : Power Generation & Utility)
+- AGNC (AGNC Investment : Mortgage Real Estate / High Dividend)
+- AMRX (Amneal Pharmaceuticals : Generic & Specialty Healthcare)
+- ARCC (Ares Capital : Business Development / Direct Lending)
+- BBD (Banco Bradesco : Major Latin American Bank)
+- CAG (ConAgra Brands : Essential Packaged Foods / Healthy Choice, Birds Eye)
+- CPB (The Campbell's Company : Essential Food & Soup Brand)
+- CWEN (Clearway Energy : Clean Power Generation Infrastructure)
+- ET (Energy Transfer LP : Natural Gas & Crude Midstream Pipeline Infrastructure)
+- F (Ford Motor Company : Iconic Automotive & Commercial Fleet)
+- HBAN (Huntington Bancshares : Regional Banking & Commercial Loans)
+- ITUB (Itau Unibanco : Largest Latin American Financial Institution)
+- JBLU (JetBlue Airways)
+- KEY (KeyCorp : Major US Regional Bank)
+- KHC (The Kraft Heinz Company : Global Food & Beverage Staple)
+- KSS (Kohl's Corporation : Value Department Store Retail)
+- M (Macy's : Major Department Store Retail)
+- NCLH (Norwegian Cruise Line)
+- NLY (Annaly Capital Management : Essential Mortgage Capital / High Yield)
+- NU (Nu Holdings : Nubank / Rapidly Growing Global Digital Bank)
+- PBR (Petroleo Brasileiro : Global Energy Major)
+- RF (Regions Financial : Essential Southeastern Regional Bank)
+- STLA (Stellantis : Global Automotive / Jeep, Ram, Chrysler)
+- STWD (Starwood Property Trust : Commercial Real Estate Finance)
+- TAC (TransAlta Corporation : Power & Renewable Generation Utility)
+- VALE (Vale S.A. : Essential Global Iron Ore & Nickel Mining)
+- VOD (Vodafone Group : Global Telecom & Mobile Infrastructure)

@@ -21,7 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CACHE_DIR = PROJECT_ROOT / "CACHE" / "stock_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-OUTPUT_DIR = PROJECT_ROOT / "OUTPUT"
+OUTPUT_DIR = PROJECT_ROOT / "OUTPUT" / "stock_prices"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_cache_path(symbol):
@@ -552,6 +552,11 @@ def generate_html_report(results, output_path=None):
             }}
         }});
 
+        // Compute fixed x-axis range: full trading day 04:00–20:00 ET
+        var dayDate_{sym} = data1d_{sym}.length > 0 ? data1d_{sym}[0].time.split(' ')[0] : '';
+        var xRangeStart_{sym} = dayDate_{sym} + ' 04:00:00';
+        var xRangeEnd_{sym} = dayDate_{sym} + ' 20:00:00';
+
         Plotly.newPlot(plot1d_{sym}, [
             // Range Area
             {{
@@ -567,7 +572,8 @@ def generate_html_report(results, output_path=None):
             {{ x: regX, y: regY, type: 'scatter', mode: 'lines', name: 'Regular', line: {{color: '#2980b9', width: 2}} }},
             {{ x: offX, y: offY, type: 'scatter', mode: 'lines', name: 'Off-Hours', line: {{color: '#8e44ad', dash: 'dot', width: 2}} }}
         ], {{
-            title: 'Intraday (Live Range)', xaxis: {{ title: 'Time', rangeslider: {{ visible: true }} }},
+            title: 'Intraday (Live Range)',
+            xaxis: {{ title: 'Time', range: [xRangeStart_{sym}, xRangeEnd_{sym}], rangeslider: {{ visible: true }} }},
             yaxis: {{ title: 'Price', autorange: true }}, margin: {{ t: 40, b: 40, l: 60, r: 20 }},
             legend: {{ orientation: 'h', y: -0.2 }}
         }});

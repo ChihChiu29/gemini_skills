@@ -38,7 +38,6 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - TXN (Texas Instruments)
 - SMCI (Super Micro Computer)
 - VRT (Vertiv Holdings)
-- PSTG (Pure Storage)
 
 ## Software, Cloud & Cybersecurity
 - ADBE (Adobe)
@@ -112,7 +111,6 @@ Use these symbols as a default list for stock analysis if the user doesn't provi
 - SPGI (S&P Global)
 - V (Visa)
 - AFRM (Affirm Holdings)
-- SQ (Block / Square)
 - UPST (Upstart Holdings)
 
 ## Healthcare, Pharmaceuticals & Biotech

@@ -14,9 +14,10 @@ This skill provides a comprehensive grid analysis of stocks across four key time
 3.  **Run Analysis**: Execute `scripts/analyze_stocks.py`.
 4.  **Open Report**: The script generates a timestamped report in the `OUTPUT/` directory.
 
-## Using the Script
+## Using the Scripts
 
-Run the script to analyze all default symbols:
+### Stock Lows Analysis
+Run the stock analysis script to analyze all default symbols:
 
 ```bash
 python scripts/analyze_stocks.py
@@ -28,8 +29,28 @@ Or analyze specific symbols:
 python scripts/analyze_stocks.py TSLA NVDA AMZN
 ```
 
+### Options Trading Analysis
+Run the options analysis script to fetch upcoming Friday put option chains for all symbols:
+
+```bash
+python scripts/analyze_options.py
+```
+
+Or execute via the single-line batch script:
+
+```bash
+.\run_options_skill.bat
+```
+
 ### Analysis Features
-- **Automatic Symbol Fetching**: If no symbols are provided, it automatically reads the curated list from `references/tech_stocks.md`.
+- **Automatic Symbol Fetching**: Automatically reads the curated lists from `references/`.
+- **Options Trading Analysis (`analyze_options.py`)**:
+    - Fetches live **PUT** option chains for the upcoming Friday expiry.
+    - Slices 5 strikes above and 5 strikes below the ATM strike (11 contracts), ordered from +5 (most expensive PUT at the top) down to -5 (like Robinhood).
+    - Computes average price ((Bid + Ask) / 2), average price / stock price %, bid, ask, last price, volume, and open interest.
+    - Summary table at top featuring strikes -2 and -3 below ATM, sorted alphabetically.
+    - Highlights Avg/Stock % in green when >= 1.0%.
+    - Always fetches live data directly without caching.
 - **Categorized BUY Targets**:
     - **Long Term BUY**: Triggered if at least 2 long-term periods (3Y, 6M, 3M) are near their lows (<15% for 3Y/6M, <20% for 3M).
     - **Short Term BUY**: Triggered if 7D Pos% is low (<25%) AND 7D Volatility is significant (>=10%), OR if 3M Volatility is high (>50%) and 3M Pos% is low (<20%).
@@ -41,8 +62,12 @@ python scripts/analyze_stocks.py TSLA NVDA AMZN
 - **Caching**: Historical data (Close, High, Low) is cached for 24 hours.
 
 ## Output
-- **Organized Storage**: All reports are stored in the `OUTPUT/` directory.
-- **Grouped Interface**: Interactive reports feature categorized tables followed by price charts.
+- **Organized Storage**: Reports are stored under subdirectories in `OUTPUT/`:
+  - `OUTPUT/stock_prices/`: Stock grid analysis reports (`stock_report_*.html`).
+  - `OUTPUT/stock_options/`: Options trading chain reports (`options_report_*.html`).
+- **Grouped Interface**: Interactive reports feature categorized tables, summary cards, and price charts.
 
 ## Reference Material
 - [references/tech_stocks.md](references/tech_stocks.md): Curated list of major U.S. tech and growth stocks.
+- [references/nontech_stocks.md](references/nontech_stocks.md): Non-tech curated stocks.
+- [references/manual_stocks.md](references/manual_stocks.md): Manually tracked stocks.

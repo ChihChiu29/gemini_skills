@@ -130,3 +130,13 @@
 - TAC (TransAlta Corporation : Power & Renewable Generation Utility)
 - VALE (Vale S.A. : Essential Global Iron Ore & Nickel Mining)
 - VOD (Vodafone Group : Global Telecom & Mobile Infrastructure)
+
+# Emerging Consumer, Mobility & Commercial Growth (<$50)
+- BROS (Dutch Bros : Rapid-Growth Drive-Thru Specialty Coffee Chain)
+- CNK (Cinemark Holdings : Theatrical Motion Picture Exhibition)
+- LUV (Southwest Airlines : Major Low-Cost Passenger Carrier)
+- ONON (On Holding : Premium Swiss High-Growth Running Shoes & Apparel)
+- PLNT (Planet Fitness : High-Growth Fitness Center Franchise)
+- SG (Sweetgreen : Plant-Forward Fast-Casual Restaurant Chain)
+- SLG (SL Green Realty : Manhattan Commercial Office REIT)
+- VNO (Vornado Realty Trust : Premium Urban Office & Retail REIT)

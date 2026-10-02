@@ -216,16 +216,27 @@ def pct_cell_class(bid_pct, offset=None):
     return ""
 
 
-def render_symbol_table(opt_data):
+def render_symbol_table(opt_data, target_friday_str=None):
     """Render a per-symbol option table as HTML."""
     sym = opt_data['symbol']
     expiry = opt_data['expiry']
     current_price = opt_data['current_price']
     rows = opt_data['rows']
 
+    is_mismatched = bool(target_friday_str and expiry != target_friday_str)
+    badge_html = ""
+    if is_mismatched:
+        try:
+            today = datetime.date.today()
+            exp_date = datetime.datetime.strptime(expiry, "%Y-%m-%d").date()
+            dte = (exp_date - today).days
+            badge_html = f' <span class="badge-monthly">⚠️ Non-Weekly / Monthly ({dte}d DTE)</span>'
+        except Exception:
+            badge_html = ' <span class="badge-monthly">⚠️ Non-Weekly Expiry</span>'
+
     html = f"""
     <div class="stock-card" id="options-{sym}">
-        <h3>{sym} — Put Options for {expiry}
+        <h3>{sym} — Put Options for {expiry}{badge_html}
             <span style="font-size: 0.7em; color: #666;"> | Stock: ${current_price:.2f}</span>
             <a href='#top' style='font-size: 0.5em; vertical-align: middle;'>[Top]</a>
         </h3>
@@ -296,13 +307,21 @@ def format_pos_tags(tags):
     return "".join(tag_spans)
 
 
-def render_summary_table(all_opt_data):
-    """Render the summary table at the top, one row per symbol, showing -2 and -3 strike data."""
-    html = """
-    <div class="stock-card" id="top">
+def render_single_summary_table(items, table_id, title, target_friday_str=None, is_secondary=False):
+    """Render a single summary table block with its own sorting and Recommend button."""
+    if not items:
+        return ""
+
+    card_id = "top" if not is_secondary else "top-monthly"
+    badge_note = ""
+    if is_secondary:
+        badge_note = '<span class="legend-item"><span class="badge-monthly" style="font-size: 0.85em;">Monthly / Later</span> <strong>Non-weekly contract:</strong> Longer DTE, premiums not directly comparable to weekly</span>'
+
+    html = f"""
+    <div class="stock-card" id="{card_id}">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <h2 style="margin: 0;">📋 Options Summary (Strikes -2 and -3 below ATM)</h2>
-            <button class="btn-recommend" onclick="sortRecommended()" title="Sort: 1) Yellow row (<$30), 2) Avg green cell Bid/Stk%, 3) Red tag count, 4) Symbol">
+            <h2 style="margin: 0;">{title} ({len(items)} symbols)</h2>
+            <button class="btn-recommend" onclick="sortRecommended('{table_id}')" title="Sort: 1) Yellow row (<$30), 2) Avg green cell Bid/Stk%, 3) Red tag count, 4) Symbol">
                 ⭐ Recommend
             </button>
         </div>
@@ -311,35 +330,37 @@ def render_summary_table(all_opt_data):
             <span class="legend-item"><span class="legend-box" style="background-color: #ccffcc; border: 1px solid #a3e6a3;"></span> <strong>Green cell:</strong> Bid/Stock% &ge; 0.5% (attractive premium)</span>
             <span class="legend-item"><span class="legend-box" style="background-color: #fff3cd; border: 1px solid #ffeeba;"></span> <strong>Yellow row:</strong> Stock price under $30</span>
             <span class="legend-item"><span class="legend-box" style="background-color: #ffebee; border: 1px solid #ffcdd2;"></span> <strong>Red tag:</strong> Near multi-period low (1y/6m &lt;10%, 3m/1m &lt;20%, 7d &lt;30%)</span>
+            {badge_note}
         </div>
         <p style="font-size: 0.85em; color: #666; margin-top: -2px; margin-bottom: 12px;">
             💡 <em>Click headers to sort: <strong>Symbol</strong>, <strong>Position Tags (Red Tag Count)</strong>, <strong>Stock Price</strong>, <strong>Strike -2 Bid/Stk%</strong>, <strong>Strike -3 Bid/Stk%</strong>. Or click <strong>⭐ Recommend</strong> for top picks.</em>
         </p>
-        <table id="summary-table">
+        <table id="{table_id}">
             <thead>
                 <tr>
-                    <th rowspan="2" class="col-sym sortable" onclick="sortSummaryTable(0, 'text')" title="Sort by Symbol">Symbol <span class="sort-arrow"></span></th>
-                    <th rowspan="2" class="col-target sortable" onclick="sortSummaryTable(1, 'num')" title="Sort by Red Tag Count (Ties broken by Symbol)">Position Tags <span class="sort-arrow"></span></th>
-                    <th rowspan="2" class="col-price sortable" onclick="sortSummaryTable(2, 'num')" title="Sort by Stock Price">Stock Price <span class="sort-arrow"></span></th>
-                    <th rowspan="2" class="col-exp">Expiry</th>
+                    <th rowspan="2" class="col-sym sortable" onclick="sortSummaryTable('{table_id}', 0, 'text')" title="Sort by Symbol">Symbol <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-target sortable" onclick="sortSummaryTable('{table_id}', 1, 'num')" title="Sort by Red Tag Count (Ties broken by Symbol)">Position Tags <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-price sortable" onclick="sortSummaryTable('{table_id}', 2, 'num')" title="Sort by Stock Price">Stock Price <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-exp sortable" onclick="sortSummaryTable('{table_id}', 3, 'text')" title="Sort by Expiry">Expiry <span class="sort-arrow"></span></th>
                     <th colspan="4" class="period-hdr" style="text-align:center;">Strike -2</th>
                     <th colspan="4" class="period-hdr" style="text-align:center;">Strike -3</th>
                 </tr>
                 <tr>
                     <th class="period-sep col-stat">Strike</th>
                     <th class="col-stat">Bid</th>
-                    <th class="col-stat sortable" onclick="sortSummaryTable(6, 'num')" title="Sort by Strike -2 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable('{table_id}', 6, 'num')" title="Sort by Strike -2 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
                     <th class="col-stat">Last</th>
                     <th class="period-sep col-stat">Strike</th>
                     <th class="col-stat">Bid</th>
-                    <th class="col-stat sortable" onclick="sortSummaryTable(10, 'num')" title="Sort by Strike -3 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable('{table_id}', 10, 'num')" title="Sort by Strike -3 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
                     <th class="col-stat">Last</th>
                 </tr>
             </thead>
             <tbody>
     """
 
-    sorted_data = sorted(all_opt_data, key=lambda d: d['symbol'])
+    sorted_data = sorted(items, key=lambda d: d['symbol'])
+    today = datetime.date.today()
 
     for opt_data in sorted_data:
         sym = opt_data['symbol']
@@ -348,9 +369,20 @@ def render_summary_table(all_opt_data):
         tags = opt_data.get('tags', [])
         summary = get_summary_rows(opt_data)
 
+        # Expiry formatting with badge if not matching target Friday
+        is_mismatched = bool(target_friday_str and expiry != target_friday_str)
+        if is_mismatched:
+            try:
+                exp_date = datetime.datetime.strptime(expiry, "%Y-%m-%d").date()
+                dte = (exp_date - today).days
+                expiry_display = f'{expiry}<br><span class="badge-monthly">{dte}d DTE</span>'
+            except Exception:
+                expiry_display = f'{expiry}<br><span class="badge-monthly">Monthly</span>'
+        else:
+            expiry_display = expiry
+
         sym_link = f'<a href="#options-{sym}" style="text-decoration:none; color:#2c3e50; font-weight:bold;">{sym}</a>'
         tags_html = format_pos_tags(tags)
-        # Store count of red tags
         red_count = sum(1 for t in tags if t.get('is_red'))
         is_yellow = 1 if current_price < 30.0 else 0
         row_cls = ' class="price-low"' if is_yellow else ""
@@ -376,7 +408,6 @@ def render_summary_table(all_opt_data):
                     <td{sep}>—</td><td>—</td><td>—</td><td>—</td>
                 """
 
-        # Average of green cell values (0 if none)
         green_avg = sum(green_values) / len(green_values) if green_values else 0.0
 
         html += f"""
@@ -384,7 +415,7 @@ def render_summary_table(all_opt_data):
                     <td style="text-align:left;">{sym_link}</td>
                     <td style="text-align:center;" data-val="{red_count}">{tags_html}</td>
                     <td>${current_price:.2f}</td>
-                    <td>{expiry}</td>
+                    <td style="text-align:center;" data-val="{expiry}">{expiry_display}</td>
                     {cells}
                 </tr>
         """
@@ -397,6 +428,45 @@ def render_summary_table(all_opt_data):
     return html
 
 
+def render_summary_table(all_opt_data, target_friday=None):
+    """Split option data into weekly (target Friday) and non-weekly/monthly tables."""
+    target_friday_str = target_friday.isoformat() if target_friday else None
+
+    weekly_data = []
+    other_data = []
+
+    for opt_data in all_opt_data:
+        if target_friday_str and opt_data.get('expiry') == target_friday_str:
+            weekly_data.append(opt_data)
+        elif not target_friday_str:
+            weekly_data.append(opt_data)
+        else:
+            other_data.append(opt_data)
+
+    target_label = target_friday.strftime('%Y-%m-%d (%A)') if target_friday else "Upcoming Friday"
+    weekly_title = f"📋 Upcoming Friday Expiry Summary — {target_label}"
+    weekly_html = render_single_summary_table(
+        weekly_data,
+        table_id="summary-table-weekly",
+        title=weekly_title,
+        target_friday_str=target_friday_str,
+        is_secondary=False
+    )
+
+    other_html = ""
+    if other_data:
+        other_title = "📆 Non-Weekly / Monthly Expiries Summary (Next Available Expiry)"
+        other_html = render_single_summary_table(
+            other_data,
+            table_id="summary-table-monthly",
+            title=other_title,
+            target_friday_str=target_friday_str,
+            is_secondary=True
+        )
+
+    return weekly_html + other_html
+
+
 def generate_html_report(all_opt_data, target_friday=None, output_path=None):
     """Generate the complete HTML report."""
     now = datetime.datetime.now()
@@ -406,13 +476,14 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
     else:
         output_path = Path(output_path)
 
-    summary_html = render_summary_table(all_opt_data)
+    target_friday_str = target_friday.isoformat() if target_friday else None
+    summary_html = render_summary_table(all_opt_data, target_friday=target_friday)
 
     tables_html = ""
     for opt_data in sorted(all_opt_data, key=lambda d: d['symbol']):
-        tables_html += render_symbol_table(opt_data)
+        tables_html += render_symbol_table(opt_data, target_friday_str=target_friday_str)
 
-    expiry_label = f"Expiry {target_friday.strftime('%Y-%m-%d (%A)')}" if target_friday else "Upcoming Friday Expiry"
+    expiry_label = f"Target Friday: {target_friday.strftime('%Y-%m-%d (%A)')}" if target_friday else "Upcoming Friday Expiry"
 
     full_html = f"""<!DOCTYPE html>
 <html>
@@ -444,7 +515,7 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
         .col-sym {{ width: 70px; }}
         .col-target {{ width: 230px; text-align: center; white-space: nowrap; }}
         .col-price {{ width: 85px; }}
-        .col-exp {{ width: 90px; }}
+        .col-exp {{ width: 105px; text-align: center; }}
         .col-idx {{ width: 50px; }}
         .col-strike {{ width: 85px; }}
         .col-pct {{ width: 95px; }}
@@ -495,6 +566,17 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
             font-weight: bold !important;
             border: 1px solid #ffcdd2;
         }}
+        .badge-monthly {{
+            display: inline-block;
+            background-color: #fff3cd;
+            color: #b78103;
+            border: 1px solid #ffeeba;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.80em;
+            font-weight: bold;
+            margin-top: 2px;
+        }}
         .price-low {{ background-color: #fff3cd !important; color: #856404; }}
         .btn-recommend {{
             background: linear-gradient(135deg, #f1c40f, #f39c12);
@@ -531,10 +613,10 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
     {tables_html}
 
     <script>
-    let sortDirections = {{}};
+    let sortDirectionsByTable = {{}};
 
-    function sortRecommended() {{
-        const table = document.getElementById("summary-table");
+    function sortRecommended(tableId) {{
+        const table = document.getElementById(tableId);
         if (!table) return;
         const tbody = table.querySelector("tbody");
         const rows = Array.from(tbody.querySelectorAll("tr"));
@@ -563,23 +645,28 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
 
         rows.forEach(r => tbody.appendChild(r));
 
-        // Clear header arrows since custom multi-level sort was applied
         table.querySelectorAll('.sort-arrow').forEach(el => el.innerText = '');
-        sortDirections = {{}};
+        if (sortDirectionsByTable[tableId]) {{
+            sortDirectionsByTable[tableId] = {{}};
+        }}
     }}
 
-    function sortSummaryTable(colIndex, type) {{
-        const table = document.getElementById("summary-table");
+    function sortSummaryTable(tableId, colIndex, type) {{
+        const table = document.getElementById(tableId);
         if (!table) return;
         const tbody = table.querySelector("tbody");
         const rows = Array.from(tbody.querySelectorAll("tr"));
         
-        // For column 1 (red tag count) and numbers default to descending (highest first)
+        if (!sortDirectionsByTable[tableId]) {{
+            sortDirectionsByTable[tableId] = {{}};
+        }}
+        const tableSort = sortDirectionsByTable[tableId];
+
         const defaultDir = (colIndex === 1 || type === 'num') ? 'asc' : 'desc';
-        const currentDir = sortDirections[colIndex] || defaultDir;
+        const currentDir = tableSort[colIndex] || defaultDir;
         const newDir = currentDir === 'asc' ? 'desc' : 'asc';
-        sortDirections = {{}};
-        sortDirections[colIndex] = newDir;
+        sortDirectionsByTable[tableId] = {{}};
+        sortDirectionsByTable[tableId][colIndex] = newDir;
 
         rows.sort((a, b) => {{
             let cellA = a.children[colIndex];
@@ -598,7 +685,6 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
                 diff = newDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
             }}
 
-            // Tie-breaker using Symbol (column 0) ascending
             if (diff === 0 && colIndex !== 0) {{
                 let symA = a.children[0] ? a.children[0].innerText.trim() : '';
                 let symB = b.children[0] ? b.children[0].innerText.trim() : '';

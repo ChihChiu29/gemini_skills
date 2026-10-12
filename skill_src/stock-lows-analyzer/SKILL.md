@@ -30,27 +30,35 @@ python scripts/analyze_stocks.py TSLA NVDA AMZN
 ```
 
 ### Options Trading Analysis
-Run the options analysis script to fetch upcoming Friday put option chains for all symbols:
+Run the options analysis script to fetch put option chains for the upcoming Friday and next Friday:
 
 ```bash
+# Default: generates reports for both upcoming Friday and next Friday
 python scripts/analyze_options.py
+
+# Or target a specific Friday using the --day flag
+python scripts/analyze_options.py --day upcoming
+python scripts/analyze_options.py --day next
+python scripts/analyze_options.py --day both AAPL NVDA TSLA
 ```
 
 Or execute via the single-line batch script:
 
 ```bash
-.\run_options_skill.bat
+.\run_option_skill.bat
+.\run_option_skill.bat --day both AAPL NVDA
 ```
 
 ### Analysis Features
-- **Automatic Symbol Fetching**: Automatically reads the curated lists from `references/`.
+- **Automatic Symbol Fetching**: Automatically reads curated lists from `references/` or accepts custom symbols on CLI.
+- **Dual Friday Generation**: By default (`--day both`), generates two separate HTML reports—one for the upcoming Friday (or today if Friday) and one for next week's Friday.
+- **Standardized Filename Format**:
+  `option_price_<target_date>_<report_generation_date>_<report_generation_time>.html` (e.g. `option_price_20261009_20261009_1003.html` and `option_price_20261016_20261009_1003.html`).
 - **Options Trading Analysis (`analyze_options.py`)**:
-    - Fetches live **PUT** option chains for the upcoming Friday expiry.
-    - Slices 5 strikes above and 5 strikes below the ATM strike (11 contracts), ordered from +5 (most expensive PUT at the top) down to -5 (like Robinhood).
-    - Computes average price ((Bid + Ask) / 2), average price / stock price %, bid, ask, last price, volume, and open interest.
-    - Summary table at top featuring strikes -2 and -3 below ATM, sorted alphabetically.
-    - Highlights Avg/Stock % in green when >= 1.0%.
-    - Always fetches live data directly without caching.
+    - Fetches live **PUT** option chains for each target expiry.
+    - Slices 5 strikes above and 5 strikes below the ATM strike (11 contracts), ordered from +5 down to -5.
+    - Highlights Bid / Stock % in green when >= 0.5%.
+    - Re-uses symbol price and historical range tags across both dates for maximum speed.
 - **Categorized BUY Targets**:
     - **Long Term BUY**: Triggered if at least 2 long-term periods (3Y, 6M, 3M) are near their lows (<15% for 3Y/6M, <20% for 3M).
     - **Short Term BUY**: Triggered if 7D Pos% is low (<25%) AND 7D Volatility is significant (>=10%), OR if 3M Volatility is high (>50%) and 3M Pos% is low (<20%).

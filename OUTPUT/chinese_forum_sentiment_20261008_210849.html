@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chinese Forum Stock Sentiment & Price Range Report</title>
+<style>
+    :root {
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: #334155;
+        --bull: #10b981;
+        --bear: #ef4444;
+        --neutral: #64748b;
+        --accent: #38bdf8;
+    }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+        margin: 0;
+        padding: 24px;
+        line-height: 1.5;
+    }
+    .container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    header {
+        margin-bottom: 24px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 16px;
+    }
+    h1 {
+        font-size: 1.8rem;
+        margin: 0 0 8px 0;
+        color: var(--accent);
+    }
+    .meta-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+    }
+    .badge {
+        background: #0ea5e9;
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    .card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    h2 {
+        font-size: 1.25rem;
+        margin-top: 0;
+        margin-bottom: 16px;
+        border-left: 4px solid var(--accent);
+        padding-left: 10px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 12px;
+        font-size: 0.92rem;
+    }
+    th, td {
+        padding: 12px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+    }
+    th {
+        background-color: rgba(255, 255, 255, 0.04);
+        color: var(--text-muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.5px;
+    }
+    tr:hover {
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+    .tag-bull {
+        color: var(--bull);
+        font-weight: bold;
+        background: rgba(16, 185, 129, 0.1);
+        padding: 4px 8px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .tag-bear {
+        color: var(--bear);
+        font-weight: bold;
+        background: rgba(239, 68, 68, 0.1);
+        padding: 4px 8px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .tag-neutral {
+        color: #cbd5e1;
+        font-weight: bold;
+        background: rgba(100, 116, 139, 0.2);
+        padding: 4px 8px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .tag-nodata {
+        color: #64748b;
+        background: rgba(51, 65, 85, 0.5);
+        padding: 4px 8px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .bar-container {
+        display: flex;
+        height: 12px;
+        width: 140px;
+        background: #334155;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .bar-bull { background-color: var(--bull); }
+    .bar-bear { background-color: var(--bear); }
+    .bar-neutral { background-color: var(--neutral); }
+    .price-range {
+        font-family: monospace;
+        font-size: 1rem;
+        font-weight: bold;
+        color: #f1f5f9;
+    }
+    .price-delta {
+        font-size: 0.8rem;
+        padding-left: 4px;
+    }
+    .delta-pos { color: var(--bull); }
+    .delta-neg { color: var(--bear); }
+    a {
+        color: var(--accent);
+        text-decoration: none;
+    }
+    a:hover {
+        text-decoration: underline;
+    }
+    .notice {
+        background: rgba(56, 189, 248, 0.08);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-size: 0.88rem;
+        color: #bae6fd;
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📊 Chinese Retail Forum Sentiment & Next-Week Price Target Report</h1>
+        <div class="meta-bar">
+            <div>Target Close Horizon: <span class="badge">2026-10-16 (Friday)</span></div>
+            <div>Generated At: <span>2026-10-08 21:08:49</span></div>
+            <div>Sources: <span>Eastmoney Guba (东财股吧), PTT Stock (批踢踢股板)</span></div>
+        </div>
+    </header>
+
+    <div class="card">
+        <h2>1. Stock Comparison & Predicted Target Ranges (Next Week's Friday)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Current Price</th>
+                    <th>Overall Bias</th>
+                    <th>Sentiment Distribution</th>
+                    <th>Expected Range (Next Friday)</th>
+                    <th>Implied % Move</th>
+                    <th>Discussions Scanned</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td><b>BIDU</b></td>
+                    <td>Baidu, Inc.</td>
+                    <td><b>$83.92</b> USD</td>
+                    <td><span class="tag-neutral">⚪ Neutral / Mixed (多空震盪)</span></td>
+                    <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="bar-container" title="Bullish: 16.1%, Bearish: 9.0%, Neutral: 74.8%">
+                <div class="bar-bull" style="width: 16.1%;"></div>
+                <div class="bar-bear" style="width: 9.0%;"></div>
+                <div class="bar-neutral" style="width: 74.8%;"></div>
+            </div>
+            <span style="font-size:0.8rem; color:var(--text-muted);">16.1% / 9.0%</span>
+        </div>
+        </td>
+                    <td><span class="price-range">$85.60 ~ $100.70</span></td>
+                    <td><span class="price-delta delta-pos">+2.0%</span> to <span class="price-delta delta-pos">+20.0%</span></td>
+                    <td>155 items (33 targets)</td>
+                </tr>
+        
+                <tr>
+                    <td><b>NKE</b></td>
+                    <td>Nike, Inc.</td>
+                    <td><b>$34.74</b> USD</td>
+                    <td><span class="tag-neutral">⚪ Neutral / Mixed (多空震盪)</span></td>
+                    <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="bar-container" title="Bullish: 12.8%, Bearish: 21.3%, Neutral: 65.9%">
+                <div class="bar-bull" style="width: 12.8%;"></div>
+                <div class="bar-bear" style="width: 21.3%;"></div>
+                <div class="bar-neutral" style="width: 65.9%;"></div>
+            </div>
+            <span style="font-size:0.8rem; color:var(--text-muted);">12.8% / 21.3%</span>
+        </div>
+        </td>
+                    <td><span class="price-range">$35.46 ~ $48.64</span></td>
+                    <td><span class="price-delta delta-pos">+2.1%</span> to <span class="price-delta delta-pos">+40.0%</span></td>
+                    <td>164 items (29 targets)</td>
+                </tr>
+        
+                <tr>
+                    <td><b>PCG</b></td>
+                    <td>Pacific Gas & Electric Co.</td>
+                    <td><b>$12.67</b> USD</td>
+                    <td><span class="tag-neutral">⚪ Neutral / Mixed (多空震盪)</span></td>
+                    <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="bar-container" title="Bullish: 2.5%, Bearish: 3.1%, Neutral: 94.4%">
+                <div class="bar-bull" style="width: 2.5%;"></div>
+                <div class="bar-bear" style="width: 3.1%;"></div>
+                <div class="bar-neutral" style="width: 94.4%;"></div>
+            </div>
+            <span style="font-size:0.8rem; color:var(--text-muted);">2.5% / 3.1%</span>
+        </div>
+        </td>
+                    <td><span class="price-range">$13.30 ~ $15.20</span></td>
+                    <td><span class="price-delta delta-pos">+5.0%</span> to <span class="price-delta delta-pos">+20.0%</span></td>
+                    <td>161 items (6 targets)</td>
+                </tr>
+        
+                <tr>
+                    <td><b>VTKX</b></td>
+                    <td>VTKX</td>
+                    <td><span style="color:var(--text-muted);">N/A</span></td>
+                    <td><span class="tag-nodata">⚪ No Data (無社群討論)</span></td>
+                    <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="bar-container" title="Bullish: 0.0%, Bearish: 0.0%, Neutral: 0.0%">
+                <div class="bar-bull" style="width: 0.0%;"></div>
+                <div class="bar-bear" style="width: 0.0%;"></div>
+                <div class="bar-neutral" style="width: 0.0%;"></div>
+            </div>
+            <span style="font-size:0.8rem; color:var(--text-muted);">0.0% / 0.0%</span>
+        </div>
+        </td>
+                    <td><span style="color:var(--text-muted);">N/A (No Quote)</span></td>
+                    <td><span style="color:var(--text-muted);">-</span></td>
+                    <td>0 items (0 targets)</td>
+                </tr>
+        
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>2. Detailed Retail Threads & Opinion Highlights</h2>
+    
+        <h3 style="margin-top:20px; color:var(--accent); font-size:1.1rem;">📌 BIDU (Baidu, Inc.) - Recent Forum Activity</h3>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:140px;">Source</th>
+                    <th style="width:70px;">Sentiment</th>
+                    <th style="width:130px;">Author</th>
+                    <th style="width:140px;">Time / Date</th>
+                    <th>Discussion / Thread Title</th>
+                    <th style="width:80px;">Replies</th>
+                    <th style="width:60px;">Link</th>
+                </tr>
+            </thead>
+            <tbody>
+        
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>东君隐共富汇</td>
+                    <td>2026-10-09 11:02:25</td>
+                    <td>10.9 美股复盘：道指“独红”背后的隐忧，AI信仰遭遇“现实引力”？</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780568942.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🔴 空</td>
+                    <td>华南大灰狼</td>
+                    <td>2026-10-09 10:34:10</td>
+                    <td>什么时候倒闭啊</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780528693.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>GEO研究院</td>
+                    <td>2026-10-09 10:04:16</td>
+                    <td>AI培训：袁文君，从大山走出的OPC淬炼之路</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780464185.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>顺势右策走</td>
+                    <td>2026-10-08 23:40:45</td>
+                    <td>现在多改空还来得及吧！真是做到被全民唾弃的公司也是难得一见</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780320977.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>有毅力的柔叶翼16</td>
+                    <td>2026-10-08 22:28:55</td>
+                    <td>从零做AI搜索优化，抢占新一代搜索流量红利</td>
+                    <td>1</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780312367.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>ZAKER财经</td>
+                    <td>2026-10-08 21:03:58</td>
+                    <td>“门诊温馨提示”刷屏，百度再被网友恶搞</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780297296.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>美团-W资讯</td>
+                    <td>2026-10-08 16:42:20</td>
+                    <td>从“卖产品”到“深度参与”：中国企业进入中东的方式正在改变</td>
+                    <td>1</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780250950.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>AI商业密码</td>
+                    <td>2026-10-08 18:45:53</td>
+                    <td>2026年10月四款国产GEO排名查询工具实测：谁的数据更准更实用？</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780275129.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>大望财讯</td>
+                    <td>2026-10-08 16:48:03</td>
+                    <td>百度AI把律师“判刑”三年：一封迟到近半年的道歉信，谁为AI错误负责？</td>
+                    <td>1</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780252346.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>百度集团-W资讯</td>
+                    <td>2026-10-08 15:46:10</td>
+                    <td>美团、萝卜快跑的迪拜“出海经”：中国技术，本地答案</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780235823.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>智能车星际</td>
+                    <td>2026-10-08 11:06:02</td>
+                    <td>马斯克央视预言：最晚十年内地球会有10亿台人形机器人</td>
+                    <td>3</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1780022976.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>优刻得-W资讯</td>
+                    <td>2026-10-04 23:02:10</td>
+                    <td>推理支出2026年首超训练：“Token工厂”崛起 AI基础设施投资逻辑生变</td>
+                    <td>111</td>
+                    <td><a href="https://guba.eastmoney.com/news,usbidu,1779612546.html" target="_blank">Open</a></td>
+                </tr>
+            
+            </tbody>
+        </table>
+        
+        <h3 style="margin-top:20px; color:var(--accent); font-size:1.1rem;">📌 NKE (Nike, Inc.) - Recent Forum Activity</h3>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:140px;">Source</th>
+                    <th style="width:70px;">Sentiment</th>
+                    <th style="width:130px;">Author</th>
+                    <th style="width:140px;">Time / Date</th>
+                    <th>Discussion / Thread Title</th>
+                    <th style="width:80px;">Replies</th>
+                    <th style="width:60px;">Link</th>
+                </tr>
+            </thead>
+            <tbody>
+        
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>佚名</td>
+                    <td>2026-10-03 18:16:30</td>
+                    <td>段永平再发声！点评茅台酒桌、耐克衰落、Labubu与地产</td>
+                    <td>49</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1779579443.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>新立场NewPosition</td>
+                    <td>2026-10-09 11:37:25</td>
+                    <td>安踏牵手彪马，熟悉的并购故事有了新变量</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780608984.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🟢 多</td>
+                    <td>鳌头财经</td>
+                    <td>2026-10-08 13:07:11</td>
+                    <td>安踏15亿欧元拿下彪马，第一大股东背后多牌局走到哪了</td>
+                    <td>5</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780085481.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>蓝鲨消费</td>
+                    <td>2026-10-09 10:45:34</td>
+                    <td>安踏123亿“骑”上彪马，中国运动品牌的全球化豪赌</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780547719.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>创业最前线</td>
+                    <td>2026-10-09 09:28:42</td>
+                    <td>得物美妆靠礼赠撑起GMV，为何难留住品牌？</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780377661.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>智趣财经</td>
+                    <td>2026-10-09 08:01:21</td>
+                    <td>耐克、阿迪达斯双寡头格局，被安踏撕开一道口子</td>
+                    <td>2</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780346647.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>金牛远望号</td>
+                    <td>2026-10-08 19:18:25</td>
+                    <td>早知道不开盘了</td>
+                    <td>2</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780280482.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>陈友谅i</td>
+                    <td>2026-10-02 16:40:02</td>
+                    <td>@长江友谅资本CEO大哥，怎么看？</td>
+                    <td>6</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1779528292.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>中华网财经</td>
+                    <td>2026-10-08 17:16:57</td>
+                    <td>从A姐柏林马拉松作弊到必迈IPO中止：鞋服网红营销规范化临界点已至</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780258801.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🟢 多</td>
+                    <td>梧桐山小院子</td>
+                    <td>2026-10-08 11:37:33</td>
+                    <td>专访安踏丁世忠：收购彪马背后的多品牌经营逻辑2026.10.08</td>
+                    <td>1</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1780055777.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🟢 多</td>
+                    <td>美光科技资讯</td>
+                    <td>2026-10-02 06:25:29</td>
+                    <td>美股成交额前20：美光科技485亿美元成交领跑 埃森哲绩后暴涨16%</td>
+                    <td>7</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1779493784.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>汇金有道</td>
+                    <td>2026-10-04 17:00:30</td>
+                    <td>耐克大中华区与滔搏当下及未来业绩的持续下滑（上）</td>
+                    <td>3</td>
+                    <td><a href="https://guba.eastmoney.com/news,usnke,1779603569.html" target="_blank">Open</a></td>
+                </tr>
+            
+            </tbody>
+        </table>
+        
+        <h3 style="margin-top:20px; color:var(--accent); font-size:1.1rem;">📌 PCG (Pacific Gas & Electric Co.) - Recent Forum Activity</h3>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:140px;">Source</th>
+                    <th style="width:70px;">Sentiment</th>
+                    <th style="width:130px;">Author</th>
+                    <th style="width:140px;">Time / Date</th>
+                    <th>Discussion / Thread Title</th>
+                    <th style="width:80px;">Replies</th>
+                    <th style="width:60px;">Link</th>
+                </tr>
+            </thead>
+            <tbody>
+        
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>太平洋煤气电力资讯</td>
+                    <td>2026-10-03 04:18:09</td>
+                    <td>Statement of changes in beneficial ownership of securities</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1779559039.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>太平洋煤气电力资讯</td>
+                    <td>2026-10-02 04:17:57</td>
+                    <td>Statement of changes in beneficial ownership of securities</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1779491843.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>太平洋煤气电力资讯</td>
+                    <td>2026-09-26 04:37:38</td>
+                    <td>Statement of changes in beneficial ownership of securities</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1777790757.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>智通财经</td>
+                    <td>2026-09-24 15:13:21</td>
+                    <td>野火改革悬而未决，瑞银下调太平洋煤电(PCG.US)评级至“中性”</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1777625359.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>太平洋煤气电力资讯</td>
+                    <td>2026-09-10 04:17:43</td>
+                    <td>Statement of changes in beneficial ownership of securities</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1771054076.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>太平洋煤气电力资讯</td>
+                    <td>2026-09-05 04:12:30</td>
+                    <td>Report of proposed sale of securities</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1769237971.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>太平洋煤气电力资讯</td>
+                    <td>2026-09-05 04:04:26</td>
+                    <td>Statement of Beneficial Ownership by Certain Investors</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1769237701.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🟢 多</td>
+                    <td>英伟达资讯</td>
+                    <td>2026-09-03 05:38:30</td>
+                    <td>全球市场：美股收涨 戴尔科技涨逾15% 光通信概念股Credo跌20%</td>
+                    <td>364</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1768000865.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>智通财经</td>
+                    <td>2026-09-04 14:38:32</td>
+                    <td>联合谷歌、特斯拉等巨头，太平洋煤电(PCG.US)启动旧金山湾区虚拟电厂试点</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1769066909.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🟢 多</td>
+                    <td>MongoDB Inc-A资讯</td>
+                    <td>2026-09-02 21:31:29</td>
+                    <td>美股三大指数集体收涨 AI应用软件板块下挫 戴尔科技涨超15%</td>
+                    <td>245</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1767962344.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>🟢 多</td>
+                    <td>MongoDB Inc-A资讯</td>
+                    <td>2026-09-03 04:12:11</td>
+                    <td>美股三大指数集体收涨 AI应用软件股下挫</td>
+                    <td>0</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1767998290.html" target="_blank">Open</a></td>
+                </tr>
+            
+                <tr>
+                    <td>Eastmoney Guba</td>
+                    <td>⚪ 觀望</td>
+                    <td>爱迪生国际资讯</td>
+                    <td>2026-08-31 21:31:48</td>
+                    <td>美股三大指数集体收跌 国际油价走高 特斯拉涨超5%</td>
+                    <td>214</td>
+                    <td><a href="https://guba.eastmoney.com/news,uspcg,1766796427.html" target="_blank">Open</a></td>
+                </tr>
+            
+            </tbody>
+        </table>
+        
+        <h3 style="margin-top:20px; color:var(--accent); font-size:1.1rem;">📌 VTKX (VTKX) - Recent Forum Activity</h3>
+        <p style="color:var(--text-muted); font-size:0.9rem;">No recent Chinese forum discussions found for this symbol.</p>
+    </div>
+
+    <div class="notice">
+        <b>💡 Retail Positioning Notice:</b>
+        Chinese retail investor forums (Eastmoney Guba & PTT Stock) are high-velocity, emotional communities prone to FOMO during rallies and despair during pullbacks. These crowd metrics highlight short-term retail momentum and contrarian reversal zones rather than fundamental target prices.
+    </div>
+</div>
+</body>
+</html>

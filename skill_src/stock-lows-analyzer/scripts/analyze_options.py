@@ -27,21 +27,52 @@ NUM_STRIKES_BELOW = 5
 
 
 # ---------------------------------------------------------------------------
-# Symbol loading
+import argparse
+
+
+# ---------------------------------------------------------------------------
+# CLI Argument and Symbol loading
 # ---------------------------------------------------------------------------
 
+def parse_cli_args():
+    """Parse CLI arguments for target day selection and optional symbol list."""
+    parser = argparse.ArgumentParser(
+        description="Fetch live PUT option chains and generate HTML report(s)."
+    )
+    parser.add_argument(
+        "--day",
+        choices=["upcoming", "next", "both"],
+        default="both",
+        help=(
+            "Target expiry Friday: 'upcoming' (this Friday or today if Friday), "
+            "'next' (next week's Friday), or 'both' (default, generates two reports)."
+        )
+    )
+    parser.add_argument(
+        "symbols",
+        nargs="*",
+        default=[],
+        help="Optional stock symbols to analyze (overrides reference files)."
+    )
+    args = parser.parse_args()
+
+    symbols = [s.upper().strip() for s in args.symbols if s.strip()]
+    if not symbols:
+        ref_dir = Path(__file__).parent.parent / "references"
+        for fname in ["tech_stocks.md", "nontech_stocks.md", "manual_stocks.md"]:
+            p = ref_dir / fname
+            if p.exists():
+                with open(p, "r", encoding="utf-8") as f:
+                    symbols.extend(re.findall(r'^[ \t]*-[ \t]+([A-Z]+)', f.read(), re.MULTILINE))
+        symbols = list(dict.fromkeys(symbols))  # deduplicate, preserve order
+
+    return args.day, symbols
+
+
 def load_symbols():
-    """Load symbols from reference files (or optional CLI arguments)."""
-    if len(sys.argv) >= 2:
-        return sys.argv[1:]
-    ref_dir = Path(__file__).parent.parent / "references"
-    symbols = []
-    for fname in ["tech_stocks.md", "nontech_stocks.md", "manual_stocks.md"]:
-        p = ref_dir / fname
-        if p.exists():
-            with open(p, "r", encoding="utf-8") as f:
-                symbols.extend(re.findall(r'^[ \t]*-[ \t]+([A-Z]+)', f.read(), re.MULTILINE))
-    return list(dict.fromkeys(symbols))  # deduplicate, preserve order
+    """Backward-compatible helper to load symbols."""
+    _, symbols = parse_cli_args()
+    return symbols
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +144,27 @@ def get_upcoming_friday():
     if days_until == 0 and today.weekday() != 4:
         days_until = 7  # shouldn't happen, but safety
     return today + datetime.timedelta(days=days_until)
+
+
+def get_target_fridays(day_mode="both"):
+    """
+    Return a list of target Friday dates based on day_mode:
+    - 'upcoming': Upcoming Friday (or today if today is Friday)
+    - 'next': Next week's Friday (upcoming Friday + 7 days)
+    - 'both': [upcoming_friday, next_friday]
+    """
+    upcoming = get_upcoming_friday()
+    next_friday = upcoming + datetime.timedelta(days=7)
+
+    if day_mode == "upcoming":
+        return [upcoming]
+    elif day_mode == "next":
+        return [next_friday]
+    elif day_mode == "both":
+        return [upcoming, next_friday]
+    else:
+        # Fallback to upcoming
+        return [upcoming]
 
 
 def find_best_expiry(symbol, target_friday):
@@ -321,14 +373,14 @@ def render_single_summary_table(items, table_id, title, target_friday_str=None, 
     <div class="stock-card" id="{card_id}">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <h2 style="margin: 0;">{title} ({len(items)} symbols)</h2>
-            <button class="btn-recommend" onclick="sortRecommended('{table_id}')" title="Sort: 1) Yellow row (<$30), 2) Avg green cell Bid/Stk%, 3) Red tag count, 4) Symbol">
+            <button class="btn-recommend" onclick="sortRecommended('{table_id}')" title="Sort: 1) Yellow row (<$40), 2) Avg green cell Bid/Stk%, 3) Red tag count, 4) Symbol">
                 ⭐ Recommend
             </button>
         </div>
         <div class="color-legend">
             <strong>🎨 Color Legend:</strong>
             <span class="legend-item"><span class="legend-box" style="background-color: #ccffcc; border: 1px solid #a3e6a3;"></span> <strong>Green cell:</strong> Bid/Stock% &ge; 0.5% (attractive premium)</span>
-            <span class="legend-item"><span class="legend-box" style="background-color: #fff3cd; border: 1px solid #ffeeba;"></span> <strong>Yellow row:</strong> Stock price under $30</span>
+            <span class="legend-item"><span class="legend-box" style="background-color: #fff3cd; border: 1px solid #ffeeba;"></span> <strong>Yellow row:</strong> Stock price under $40</span>
             <span class="legend-item"><span class="legend-box" style="background-color: #ffebee; border: 1px solid #ffcdd2;"></span> <strong>Red tag:</strong> Near multi-period low (1y/6m &lt;10%, 3m/1m &lt;20%, 7d &lt;30%)</span>
             {badge_note}
         </div>
@@ -384,7 +436,7 @@ def render_single_summary_table(items, table_id, title, target_friday_str=None, 
         sym_link = f'<a href="#options-{sym}" style="text-decoration:none; color:#2c3e50; font-weight:bold;">{sym}</a>'
         tags_html = format_pos_tags(tags)
         red_count = sum(1 for t in tags if t.get('is_red'))
-        is_yellow = 1 if current_price < 30.0 else 0
+        is_yellow = 1 if current_price < 40.0 else 0
         row_cls = ' class="price-low"' if is_yellow else ""
 
         cells = ""
@@ -471,7 +523,10 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
     """Generate the complete HTML report."""
     now = datetime.datetime.now()
     if output_path is None:
-        filename = f"options_report_{now.strftime('%Y%m%d_%H%M%S')}.html"
+        target_str = target_friday.strftime("%Y%m%d") if target_friday else "all"
+        gen_date_str = now.strftime("%Y%m%d")
+        gen_time_str = now.strftime("%H%M")
+        filename = f"option_price_{target_str}_{gen_date_str}_{gen_time_str}.html"
         output_path = OUTPUT_DIR / filename
     else:
         output_path = Path(output_path)
@@ -622,7 +677,7 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
         const rows = Array.from(tbody.querySelectorAll("tr"));
 
         rows.sort((a, b) => {{
-            // 1. Yellow row first (<$30) -> 1 before 0
+            // 1. Yellow row first (<$40) -> 1 before 0
             const yA = parseInt(a.getAttribute('data-yellow') || '0', 10);
             const yB = parseInt(b.getAttribute('data-yellow') || '0', 10);
             if (yA !== yB) return yB - yA;
@@ -718,16 +773,18 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
 # ---------------------------------------------------------------------------
 
 def main():
-    symbols = load_symbols()
+    day_mode, symbols = parse_cli_args()
     if not symbols:
         print("No symbols found. Pass symbols as arguments or add them to references/*.md")
         sys.exit(1)
 
-    target_friday = get_upcoming_friday()
-    print(f"Target expiry Friday: {target_friday}")
+    target_fridays = get_target_fridays(day_mode)
+    print(f"Mode: '{day_mode}' | Target expiry Friday(s): {', '.join(str(f) for f in target_fridays)}")
     print(f"Analyzing {len(symbols)} symbols...\n")
 
-    all_opt_data = []
+    # Structure to hold option datasets per target Friday
+    options_by_friday = {tf: [] for tf in target_fridays}
+
     BATCH_SIZE = 50
     BATCH_DELAY = 2  # seconds
 
@@ -739,33 +796,39 @@ def main():
 
         print(f"  [{i+1}/{len(symbols)}] {sym}...", end=" ")
 
-        # 1. Get current stock price and range-position tags
+        # 1. Get current stock price and range-position tags once per symbol
         price, tags = fetch_stock_price_and_tags(sym)
         if price is None:
             print("SKIP (no price)")
             continue
 
-        # 2. Find best expiry near target Friday
-        expiry = find_best_expiry(sym, target_friday)
-        if expiry is None:
-            print("SKIP (no expiry)")
-            continue
+        expiries_found = []
+        for tf in target_fridays:
+            # 2. Find best expiry near target Friday
+            expiry = find_best_expiry(sym, tf)
+            if expiry is None:
+                continue
 
-        # 3. Fetch option chain
-        opt_data = fetch_option_chain(sym, expiry, price, tags=tags)
-        if opt_data is None:
+            # 3. Fetch option chain
+            opt_data = fetch_option_chain(sym, expiry, price, tags=tags)
+            if opt_data is not None:
+                options_by_friday[tf].append(opt_data)
+                expiries_found.append(f"{tf}:{expiry}")
+
+        if expiries_found:
+            print(f"OK ({', '.join(expiries_found)})")
+        else:
             print("SKIP (no chain)")
-            continue
 
-        all_opt_data.append(opt_data)
-        print(f"OK ({len(opt_data['rows'])} strikes, expiry={expiry})")
-
-    print(f"\nCollected option data for {len(all_opt_data)} symbols.")
-
-    if all_opt_data:
-        generate_html_report(all_opt_data, target_friday=target_friday)
-    else:
-        print("No option data collected; no report generated.")
+    print("\n" + "=" * 60)
+    for tf in target_fridays:
+        data = options_by_friday[tf]
+        print(f"Target Friday {tf}: Collected data for {len(data)} symbols.")
+        if data:
+            generate_html_report(data, target_friday=tf)
+        else:
+            print(f"No option data collected for target Friday {tf}; report skipped.")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

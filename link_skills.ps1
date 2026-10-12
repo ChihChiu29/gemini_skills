@@ -13,7 +13,7 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Get-Location
 }
 
-$Skills = @("stock-lows-analyzer", "leasehackr-ev-deals")
+$Skills = @("stock-lows-analyzer", "leasehackr-ev-deals", "chinese-forum-sentiment")
 
 # The target folders where the CLI checks for skills
 $TargetBases = @(

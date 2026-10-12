@@ -16,6 +16,11 @@ Analyzes major U.S. stocks to find those trading near historical lows or experie
 - **Features**: 4-column proximity analysis (3Y, 6M, 3M, 7D), trend tracking, and color-coded HTML reports.
 - **Source**: `skill_src/stock-lows-analyzer/`
 
+### 💬 Chinese Forum Stock Sentiment & Price Range Scanner
+Scans high-volume, free-to-participate Chinese retail investor boards (Eastmoney Guba / 东方财富股吧, PTT Stock / 批踢踢股板) to gauge crowd sentiment and predict price ranges targeting next week's Friday close.
+- **Features**: Sentiment polarity scoring (Bullish/Bearish/Neutral), crowd target range extraction, dual forum parsing, and markdown reports.
+- **Source**: `skill_src/chinese-forum-sentiment/`
+
 ---
 
 ## Installation Instructions

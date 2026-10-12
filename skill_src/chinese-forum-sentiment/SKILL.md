@@ -34,7 +34,7 @@ Or run via the repository batch shortcut:
 - `--ptt-max N`: Max discussion threads to scan on PTT Stock per symbol (default: `10`).
 - `--force-refresh`: Bypasses daily cache and fetches fresh forum data.
 - `--no-cache`: Disables saving scraped results to the daily cache.
-- `--output-dir PATH`: Directory where generated HTML and Markdown reports are saved (defaults to `OUTPUT/`).
+- `--output-dir PATH`: Directory where generated HTML and Markdown reports are saved (defaults to `OUTPUT/forum_sentiment/`).
 
 ## Analysis Features
 

@@ -835,7 +835,7 @@ def main():
         symbols = ["BIDU"]
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-    output_dir = args.output_dir or os.path.join(project_root, "OUTPUT")
+    output_dir = args.output_dir or os.path.join(project_root, "OUTPUT", "forum_sentiment")
     cache_dir = os.path.join(project_root, "CACHE", "forum_sentiment")
 
     target_friday = get_next_friday()

@@ -108,6 +108,23 @@ def fetch_data(symbol, period="max"):
         company_name = info.get('longName') or info.get('shortName') or symbol.upper()
         
         public_rating = fetch_public_rating(symbol)
+
+        # Fetch next earnings date from calendar if available
+        earnings_date = None
+        try:
+            cal = ticker.calendar
+            if cal and isinstance(cal, dict):
+                ed_list = cal.get('Earnings Date')
+                if ed_list and len(ed_list) > 0 and ed_list[0]:
+                    raw_ed = ed_list[0]
+                    if hasattr(raw_ed, 'date'):
+                        earnings_date = str(raw_ed.date())
+                    elif isinstance(raw_ed, datetime.date):
+                        earnings_date = str(raw_ed)
+                    elif isinstance(raw_ed, str):
+                        earnings_date = str(raw_ed)[:10]
+        except Exception:
+            pass
         
         data = {
             "symbol": symbol.upper(),
@@ -116,6 +133,7 @@ def fetch_data(symbol, period="max"):
             "website": info.get('website', ""),
             "expectation_value": round(float(info['targetMeanPrice']), 2) if info.get('targetMeanPrice') else None,
             "public_rating": public_rating,
+            "earnings_date": earnings_date,
             "last_price": round(float(hist['Close'].iloc[-1]), 2),
             "history": [
                 {"date": str(d.date()), "close": round(float(c), 2), "high": round(float(h), 2), "low": round(float(l), 2)} 
@@ -257,6 +275,7 @@ def calculate_lows(data, live_info=None):
         "is_off_hour": live_info is not None and not live_info.get('is_last_regular', True),
         "regular_close": data['last_price'],
         "expectation_value": data.get("expectation_value"),
+        "earnings_date": data.get("earnings_date"),
         "3y": get_period_stats(3 * 365),
         "1y": get_period_stats(365),
         "6m": get_period_stats(180),
@@ -345,9 +364,13 @@ def generate_html_report(results, output_path=None):
             .col-price { width: 85px; }
             .col-target { width: 75px; }
             .col-public { width: 85px; }
+            .col-earnings { width: 95px; text-align: center !important; }
             .col-option { width: 105px; text-align: left !important; }
             .col-stat { width: 52px; font-size: 0.95em; }
             .col-reason { width: 220px; text-align: left !important; }
+
+            .badge-earnings { display: inline-block; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 4px; font-size: 0.88em; font-weight: 600; white-space: nowrap; }
+            .badge-earnings-alert { display: inline-block; background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 4px; padding: 1px 4px; font-size: 0.88em; font-weight: bold; white-space: nowrap; }
 
             .red-cell { background-color: #ffcccc !important; color: #cc0000; font-weight: bold; }
             .green-cell { background-color: #ccffcc !important; color: #006600; font-weight: bold; }
@@ -410,6 +433,7 @@ def generate_html_report(results, output_path=None):
                         <th rowspan="2" class="col-price">Price</th>
                         <th rowspan="2" class="col-target">Price Target (SA)</th>
                         <th rowspan="2" class="col-public">Public.com</th>
+                        <th rowspan="2" class="col-earnings">Earnings Date</th>
                         {"<th rowspan='2' class='col-option'>Option Insights</th>" if is_buy_table else ""}
                         <th colspan="5" class="period-hdr">1 Year Period</th>
                         <th colspan="5" class="period-hdr period-alt">6 Month Period</th>
@@ -464,7 +488,31 @@ def generate_html_report(results, output_path=None):
             
             pub_display = pub_rating if pub_rating else "-"
 
-            row_html = f"<tr><td class='col-sym'><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td class='col-price'>{price_display}</td><td class='col-target{exp_cls}'>{exp_val_display}</td><td class='col-public{pub_cls}'>{pub_display}</td>{option_html}"
+            # Earnings Date
+            ed = stats.get('earnings_date')
+            if ed:
+                ed_str = str(ed)[:10]
+                is_near = False
+                is_past = False
+                try:
+                    ed_d = datetime.datetime.strptime(ed_str, "%Y-%m-%d").date()
+                    days_until = (ed_d - datetime.date.today()).days
+                    if days_until < 0:
+                        is_past = True
+                    elif 0 <= days_until <= 14:
+                        is_near = True
+                except Exception:
+                    pass
+                if is_near:
+                    ed_display = f"<td class='col-earnings'><span class='badge-earnings-alert' title='Earnings in {days_until} days!'>⚠️ {ed_str}</span></td>"
+                elif is_past:
+                    ed_display = f"<td class='col-earnings'><span class='badge-earnings' style='opacity: 0.6;' title='Past earnings call ({ed_str})'>{ed_str}</span></td>"
+                else:
+                    ed_display = f"<td class='col-earnings'><span class='badge-earnings'>{ed_str}</span></td>"
+            else:
+                ed_display = "<td class='col-earnings' style='color:#a0aec0;'>-</td>"
+
+            row_html = f"<tr><td class='col-sym'><a href='#chart-{sym}' style='text-decoration:none; color:inherit;'>{sym} 📈</a></td><td class='col-price'>{price_display}</td><td class='col-target{exp_cls}'>{exp_val_display}</td><td class='col-public{pub_cls}'>{pub_display}</td>{ed_display}{option_html}"
             for p_idx, p_key in enumerate(["1y", "6m", "3m", "7d"]):
                 p = stats[p_key]
                 alt = " period-alt" if p_idx % 2 == 1 else ""

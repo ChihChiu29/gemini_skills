@@ -59,6 +59,9 @@ Or execute via the single-line batch script:
     - Slices 5 strikes above and 5 strikes below the ATM strike (11 contracts), ordered from +5 down to -5.
     - Highlights Bid / Stock % in green when >= 0.5%.
     - Re-uses symbol price and historical range tags across both dates for maximum speed.
+    - **Earnings Date Tracking**: Includes an interactive sortable **Earnings Date** column with warnings (`⚠️ YYYY-MM-DD`) if earnings announcement occurs on or before option expiration.
+- **Stock Grid Analysis (`analyze_stocks.py`)**:
+    - **Earnings Date Tracking**: Features an **Earnings Date** column with warning badges (`⚠️ YYYY-MM-DD`) highlighting events within 14 days.
 - **Categorized BUY Targets**:
     - **Long Term BUY**: Triggered if at least 2 long-term periods (3Y, 6M, 3M) are near their lows (<15% for 3Y/6M, <20% for 3M).
     - **Short Term BUY**: Triggered if 7D Pos% is low (<25%) AND 7D Volatility is significant (>=10%), OR if 3M Volatility is high (>50%) and 3M Pos% is low (<20%).

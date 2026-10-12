@@ -127,10 +127,27 @@ def fetch_stock_price_and_tags(symbol):
                 "key": label,
             })
 
-        return price, tags
+        # Fetch next earnings date from calendar if available
+        earnings_date = None
+        try:
+            cal = ticker.calendar
+            if cal and isinstance(cal, dict):
+                ed_list = cal.get('Earnings Date')
+                if ed_list and len(ed_list) > 0 and ed_list[0]:
+                    raw_ed = ed_list[0]
+                    if hasattr(raw_ed, 'date'):
+                        earnings_date = raw_ed.date()
+                    elif isinstance(raw_ed, datetime.date):
+                        earnings_date = raw_ed
+                    elif isinstance(raw_ed, str):
+                        earnings_date = datetime.datetime.strptime(raw_ed[:10], "%Y-%m-%d").date()
+        except Exception:
+            pass
+
+        return price, tags, earnings_date
     except Exception as e:
         print(f"  Warning: could not get price/history for {symbol}: {e}")
-        return None, []
+        return None, [], None
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +207,7 @@ def find_best_expiry(symbol, target_friday):
 # Fetch option chain
 # ---------------------------------------------------------------------------
 
-def fetch_option_chain(symbol, expiry_str, current_price, tags=None):
+def fetch_option_chain(symbol, expiry_str, current_price, tags=None, earnings_date=None):
     """Fetch put options chain around current_price, returning structured rows ordered +5 to -5."""
     try:
         ticker = yf.Ticker(symbol)
@@ -244,6 +261,7 @@ def fetch_option_chain(symbol, expiry_str, current_price, tags=None):
             "expiry": expiry_str,
             "current_price": current_price,
             "tags": tags or [],
+            "earnings_date": earnings_date,
             "rows": rows,
             "fetched_at": datetime.datetime.now().isoformat()
         }
@@ -393,18 +411,19 @@ def render_single_summary_table(items, table_id, title, target_friday_str=None, 
                     <th rowspan="2" class="col-sym sortable" onclick="sortSummaryTable('{table_id}', 0, 'text')" title="Sort by Symbol">Symbol <span class="sort-arrow"></span></th>
                     <th rowspan="2" class="col-target sortable" onclick="sortSummaryTable('{table_id}', 1, 'num')" title="Sort by Red Tag Count (Ties broken by Symbol)">Position Tags <span class="sort-arrow"></span></th>
                     <th rowspan="2" class="col-price sortable" onclick="sortSummaryTable('{table_id}', 2, 'num')" title="Sort by Stock Price">Stock Price <span class="sort-arrow"></span></th>
-                    <th rowspan="2" class="col-exp sortable" onclick="sortSummaryTable('{table_id}', 3, 'text')" title="Sort by Expiry">Expiry <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-earnings sortable" onclick="sortSummaryTable('{table_id}', 3, 'text')" title="Sort by Earnings Date">Earnings Date <span class="sort-arrow"></span></th>
+                    <th rowspan="2" class="col-exp sortable" onclick="sortSummaryTable('{table_id}', 4, 'text')" title="Sort by Expiry">Expiry <span class="sort-arrow"></span></th>
                     <th colspan="4" class="period-hdr" style="text-align:center;">Strike -2</th>
                     <th colspan="4" class="period-hdr" style="text-align:center;">Strike -3</th>
                 </tr>
                 <tr>
                     <th class="period-sep col-stat">Strike</th>
                     <th class="col-stat">Bid</th>
-                    <th class="col-stat sortable" onclick="sortSummaryTable('{table_id}', 6, 'num')" title="Sort by Strike -2 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable('{table_id}', 7, 'num')" title="Sort by Strike -2 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
                     <th class="col-stat">Last</th>
                     <th class="period-sep col-stat">Strike</th>
                     <th class="col-stat">Bid</th>
-                    <th class="col-stat sortable" onclick="sortSummaryTable('{table_id}', 10, 'num')" title="Sort by Strike -3 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
+                    <th class="col-stat sortable" onclick="sortSummaryTable('{table_id}', 11, 'num')" title="Sort by Strike -3 Bid/Stk%">Bid/Stk% <span class="sort-arrow"></span></th>
                     <th class="col-stat">Last</th>
                 </tr>
             </thead>
@@ -462,11 +481,40 @@ def render_single_summary_table(items, table_id, title, target_friday_str=None, 
 
         green_avg = sum(green_values) / len(green_values) if green_values else 0.0
 
+        # Earnings Date formatting
+        ed = opt_data.get('earnings_date')
+        if ed:
+            ed_str = ed.strftime("%Y-%m-%d") if hasattr(ed, 'strftime') else str(ed)[:10]
+            # Check if earnings date is in the future and falls on or before expiry
+            is_upcoming_before_expiry = False
+            is_past = False
+            try:
+                exp_d = datetime.datetime.strptime(expiry, "%Y-%m-%d").date()
+                if isinstance(ed, datetime.date):
+                    if ed < today:
+                        is_past = True
+                    elif today <= ed <= exp_d:
+                        is_upcoming_before_expiry = True
+            except Exception:
+                pass
+
+            if is_upcoming_before_expiry:
+                earnings_display = f'<span class="badge-earnings-alert" title="Upcoming earnings date on or before option expiry!">⚠️ {ed_str}</span>'
+            elif is_past:
+                earnings_display = f'<span class="badge-earnings" style="opacity: 0.6;" title="Past earnings call ({ed_str})">{ed_str}</span>'
+            else:
+                earnings_display = f'<span class="badge-earnings">{ed_str}</span>'
+            ed_sort_val = ed_str
+        else:
+            earnings_display = '<span style="color:#a0aec0;">—</span>'
+            ed_sort_val = "9999-99-99"
+
         html += f"""
                 <tr{row_cls} data-yellow="{is_yellow}" data-red="{red_count}" data-green-avg="{green_avg:.4f}" data-sym="{sym}">
                     <td style="text-align:left;">{sym_link}</td>
                     <td style="text-align:center;" data-val="{red_count}">{tags_html}</td>
                     <td>${current_price:.2f}</td>
+                    <td style="text-align:center;" data-val="{ed_sort_val}">{earnings_display}</td>
                     <td style="text-align:center;" data-val="{expiry}">{expiry_display}</td>
                     {cells}
                 </tr>
@@ -570,6 +618,7 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
         .col-sym {{ width: 70px; }}
         .col-target {{ width: 230px; text-align: center; white-space: nowrap; }}
         .col-price {{ width: 85px; }}
+        .col-earnings {{ width: 105px; text-align: center; }}
         .col-exp {{ width: 105px; text-align: center; }}
         .col-idx {{ width: 50px; }}
         .col-strike {{ width: 85px; }}
@@ -631,6 +680,28 @@ def generate_html_report(all_opt_data, target_friday=None, output_path=None):
             font-size: 0.80em;
             font-weight: bold;
             margin-top: 2px;
+        }}
+        .badge-earnings {{
+            display: inline-block;
+            background-color: #e2e8f0;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.85em;
+            font-weight: 600;
+            white-space: nowrap;
+        }}
+        .badge-earnings-alert {{
+            display: inline-block;
+            background-color: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.85em;
+            font-weight: bold;
+            white-space: nowrap;
         }}
         .price-low {{ background-color: #fff3cd !important; color: #856404; }}
         .btn-recommend {{
@@ -796,8 +867,8 @@ def main():
 
         print(f"  [{i+1}/{len(symbols)}] {sym}...", end=" ")
 
-        # 1. Get current stock price and range-position tags once per symbol
-        price, tags = fetch_stock_price_and_tags(sym)
+        # 1. Get current stock price, range-position tags, and next earnings date once per symbol
+        price, tags, earnings_date = fetch_stock_price_and_tags(sym)
         if price is None:
             print("SKIP (no price)")
             continue
@@ -810,7 +881,7 @@ def main():
                 continue
 
             # 3. Fetch option chain
-            opt_data = fetch_option_chain(sym, expiry, price, tags=tags)
+            opt_data = fetch_option_chain(sym, expiry, price, tags=tags, earnings_date=earnings_date)
             if opt_data is not None:
                 options_by_friday[tf].append(opt_data)
                 expiries_found.append(f"{tf}:{expiry}")

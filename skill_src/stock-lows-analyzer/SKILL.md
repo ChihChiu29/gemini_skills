@@ -30,36 +30,44 @@ python scripts/analyze_stocks.py TSLA NVDA AMZN
 ```
 
 ### Options Trading Analysis
-Run the options analysis script to fetch put option chains for the upcoming Friday and next Friday:
+Run the options analysis script to fetch put option chains and/or covered call chains:
 
 ```bash
-# Default: generates reports for both upcoming Friday and next Friday
+# Default: generates reports for both PUT (2 upcoming Fridays) and Covered CALL (next 4 Fridays)
 python scripts/analyze_options.py
 
-# Or target a specific Friday using the --day flag
+# Select option type using --type:
+python scripts/analyze_options.py --type put
+python scripts/analyze_options.py --type call
+python scripts/analyze_options.py --type both
+
+# Target a specific Friday using the --day flag
 python scripts/analyze_options.py --day upcoming
 python scripts/analyze_options.py --day next
-python scripts/analyze_options.py --day both AAPL NVDA TSLA
+python scripts/analyze_options.py --type both --day both AAPL NVDA TSLA
 ```
 
-Or execute via the single-line batch script:
+Or execute via the batch script:
 
 ```bash
 .\run_option_skill.bat
-.\run_option_skill.bat --day both AAPL NVDA
+.\run_option_skill.bat --type call AAPL NVDA
 ```
 
 ### Analysis Features
 - **Automatic Symbol Fetching**: Automatically reads curated lists from `references/` or accepts custom symbols on CLI.
-- **Dual Friday Generation**: By default (`--day both`), generates two separate HTML reports—one for the upcoming Friday (or today if Friday) and one for next week's Friday.
-- **Standardized Filename Format**:
-  `option_price_<target_date>_<report_generation_date>_<report_generation_time>.html` (e.g. `option_price_20261009_20261009_1003.html` and `option_price_20261016_20261009_1003.html`).
-- **Options Trading Analysis (`analyze_options.py`)**:
-    - Fetches live **PUT** option chains for each target expiry.
-    - Slices 5 strikes above and 5 strikes below the ATM strike (11 contracts), ordered from +5 down to -5.
-    - Highlights Bid / Stock % in green when >= 0.5%.
-    - Re-uses symbol price and historical range tags across both dates for maximum speed.
-    - **Earnings Date Tracking**: Includes an interactive sortable **Earnings Date** column with warnings (`⚠️ YYYY-MM-DD`) if earnings announcement occurs on or before option expiration.
+- **PUT Options Analysis**:
+  - Generates reports for 2 upcoming Fridays by default.
+  - Slices 5 strikes above and 5 strikes below the ATM strike (11 contracts), ordered from +5 down to -5.
+  - Summary table spotlights Strike -2 and Strike -3 (OTM puts) with Bid, Bid/Stock %, and Last price.
+  - Highlights Bid / Stock % in green when >= 0.5%.
+- **Covered Calls Analysis**:
+  - Generates reports for the next 4 Fridays by default.
+  - Evaluates out-of-the-money call selling opportunities for income generation and upside capture.
+  - Summary table features 3 strikes: **Strike +1**, **Strike +2**, and **Strike +3**.
+  - Displays **Bid / Stock %** (flat premium yield) and **Max Return %** (return if assigned: `((Strike - Stock Price) + Bid) / Stock Price`).
+  - Slices ATM ± 5 strikes, ordered from lowest strike to highest strike with ATM highlighted in yellow.
+- **Earnings Date Tracking**: Includes an interactive sortable **Earnings Date** column with warning badges (`⚠️ YYYY-MM-DD`) if earnings announcement occurs on or before option expiration.
 - **Stock Grid Analysis (`analyze_stocks.py`)**:
     - **Earnings Date Tracking**: Features an **Earnings Date** column with warning badges (`⚠️ YYYY-MM-DD`) highlighting events within 14 days.
 - **Categorized BUY Targets**:
@@ -75,7 +83,10 @@ Or execute via the single-line batch script:
 ## Output
 - **Organized Storage**: Reports are stored under subdirectories in `OUTPUT/`:
   - `OUTPUT/stock_prices/`: Stock grid analysis reports (`stock_report_*.html`).
-  - `OUTPUT/stock_options/`: Options trading chain reports (`options_report_*.html`).
+  - `OUTPUT/stock_options/`: Options trading reports organized by target date and type:
+    - `<YYYYMMDD>_PUT/put_<YYYYMMDD>_<HHMM>.html`
+    - `<YYYYMMDD>_CALL/call_<YYYYMMDD>_<HHMM>.html`
+    - `old_results/`: Archived historical options reports.
 - **Grouped Interface**: Interactive reports feature categorized tables, summary cards, and price charts.
 
 ## Reference Material
